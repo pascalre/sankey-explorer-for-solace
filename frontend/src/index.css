@@ -1,0 +1,315 @@
+/*
+ * Colors: Solace Brand Book 2025 v3.0, p.17 (Primary/Secondary Color
+ * Palette) + p.18 (Accessible Colors - contrast pairings verified) + p.26
+ * (Dark Mode reference). All hex values taken 1:1 from the brand book.
+ *
+ * Exception: --error is NOT a brand color - the brand book doesn't define
+ * a red/error color. Deliberately a neutral semantic red, so error states
+ * don't get confused with the brand orange (warnings/accents).
+ */
+:root {
+  color-scheme: dark;
+
+  --bg: #08223C;              /* Dark Blue - 04 (main background) */
+  --panel: #093B5F;           /* Deep Blue - 03 (cards, topbar) */
+  --border: rgba(255, 255, 255, 0.12);
+
+  --text: #FFFFFF;
+  --text-dim: rgba(255, 255, 255, 0.65);
+
+  --accent: #00C895;          /* Classic Green - 01 (primary actions) */
+  --accent-text: #08223C;     /* Dark Blue - per brand book p.18, the text
+                                  color that performs best on Classic Green */
+  --accent-hover: #ABFF88;    /* Bright Green - 02 */
+
+  --teal: #009193;            /* Secondary */
+  --orange: #FCA829;          /* Secondary - warnings/accents */
+  --tint-blue: #C2F7FF;       /* Secondary tint */
+  --tint-green: #C7FFCB;      /* Secondary tint */
+
+  --error: #E0685C;           /* not from the brand book - see comment above */
+
+  /* Figtree is Solace's actual brand typeface (confirmed embedded in the
+     Brand Book PDF's font list) - Space Mono stays reserved for the Sankey
+     diagram labels specifically, per an earlier explicit request not to
+     use it site-wide. */
+  font-family: "Figtree", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.topbar h1 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.badge {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.75rem;
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+/* solace.dev/workshop pattern: a small uppercase, letter-spaced label
+   above a heading (e.g. "EVENT BROKERS" above "Stream events everywhere"). */
+.card .eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: 'Space Mono', monospace;
+  color: var(--accent);
+  margin: 0;
+}
+
+.card h1 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 9999px;
+  padding: 0.55rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.error {
+  color: var(--error);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.sankey-container {
+  width: 100%;
+  padding: 1rem;
+}
+
+.sankey-empty {
+  padding: 2rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.sankey-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.sankey-sort-control {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.sankey-sort-control select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.sankey-toolbar button {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.sankey-node {
+  cursor: pointer;
+}
+
+/* Subtle highlight on hover - a touch brighter plus a thin light outline,
+   nothing flashy. Targets rect/text directly since fill/stroke are set
+   inline via React and a CSS class alone can't override those without
+   this. Excludes the selected node so hover never dilutes its highlight. */
+.sankey-node:not(.sankey-node--selected):hover rect {
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+
+.sankey-node:not(.sankey-node--selected):hover text {
+  fill: var(--accent);
+}
+
+.sankey-node--selected rect {
+  filter: drop-shadow(0 0 3px rgba(171, 255, 136, 0.6));
+}
+
+.ready-view {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.banner {
+  margin: 0.75rem 1rem 0;
+  padding: 0.5rem 0.75rem;
+  background: rgba(224, 104, 92, 0.12);
+  border: 1px solid var(--error);
+  border-radius: 6px;
+}
+
+.broker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.broker-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.broker-list button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+.broker-list button:hover:not(:disabled) {
+  background: rgba(224, 104, 92, 0.12);
+}
+
+.connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.broker-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.broker-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-width: 1.5px;
+}
+
+.broker-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
