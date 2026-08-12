@@ -227,7 +227,7 @@ export function ConnectScreen({
           </label>
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={submitting}>
-            {submitting ? "Connecting..." : hasBrokers ? "Add Message VPN" : "Connect \u2192"}
+            {submitting ? "Connecting..." : hasBrokers ? "Add Message VPN" : "Connect"}
           </button>
         </form>
 
