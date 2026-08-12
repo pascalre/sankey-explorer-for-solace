@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SankeyChart } from "./SankeyChart";
@@ -123,5 +123,34 @@ describe("SankeyChart - svg structure", () => {
     expect(svg.tagName.toLowerCase()).toBe("svg");
     // Sanity check there are actual node rects drawn, not just an empty svg.
     expect(within(svg).getAllByText("orders-q").length).toBeGreaterThan(0);
+  });
+});
+
+describe("SankeyChart - SVG export", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("downloads a standalone, background-filled copy of the live diagram", async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<SankeyChart edges={basicEdges} />);
+    await user.click(screen.getByRole("button", { name: "Export as SVG" }));
+
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe("image/svg+xml");
+    const text = await blob.text();
+    expect(text).toContain("<svg");
+    expect(text).toContain('fill="#093B5F"'); // the added standalone background
+    expect(text).toContain("orders-q");
+    expect(clickSpy).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
+
+    clickSpy.mockRestore();
   });
 });

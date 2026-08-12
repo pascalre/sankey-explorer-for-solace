@@ -51,6 +51,7 @@ export function SankeyChart({
   endpointVpnHost,
 }: SankeyChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(800);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   // A hovered LINK resolves to its target node id here, not a separate
@@ -127,6 +128,36 @@ export function SankeyChart({
     return new Set(relevant.map((e) => edgeKey(e.source, e.target)));
   }, [displayEdges, hoveredNodeId]);
 
+  function handleExportSvg() {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+    // The live SVG renders transparent, relying on the app's dark page
+    // background - add that back in explicitly so the exported file looks
+    // right when opened standalone (e.g. in a browser tab or an image
+    // viewer), not on a Space background.
+    const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    background.setAttribute("x", "0");
+    background.setAttribute("y", "0");
+    background.setAttribute("width", String(width));
+    background.setAttribute("height", String(height));
+    background.setAttribute("fill", "#093B5F"); // --panel, Deep Blue
+    clone.insertBefore(background, clone.firstChild);
+
+    const source =
+      '<?xml version="1.0" standalone="no"?>\n' + new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([source], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "sankey-diagram.svg";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (edges.length === 0) {
     return (
       <div className="sankey-empty">
@@ -158,8 +189,17 @@ export function SankeyChart({
             {"Back to overview"}
           </button>
         )}
+        <button type="button" onClick={handleExportSvg}>
+          Export as SVG
+        </button>
       </div>
-      <svg width={width} height={height} role="img" aria-label="Topic to endpoint Sankey diagram">
+      <svg
+        ref={svgRef}
+        width={width}
+        height={height}
+        role="img"
+        aria-label="Topic to endpoint Sankey diagram"
+      >
         <defs>
           {/* Solace Brand Book 2025 v3.0, p.17, Gradient 16: Deep Green ->
               Deep Blue. userSpaceOnUse (not the SVG default

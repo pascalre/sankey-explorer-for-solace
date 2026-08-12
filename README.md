@@ -29,14 +29,16 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 
 ## Features
 
-- **Save/import connection config as YAML.** On the Connect screen, "Save
-  config as file" downloads the current form (SEMP URL, VPN, username,
-  password, label) as a `.yaml` file, and "Import config" reads one back and
-  connects to every broker it lists. Handy for re-using a connection or
-  distributing a multi-broker mesh setup without retyping it each time. The
-  file contains the password in clear text and never touches the server -
-  it's generated and read entirely in the browser - but treat it like the
-  password itself once it's on disk. Format:
+- **Export/import connection config as YAML.** On the Connect screen,
+  "Export config" downloads the credentials of every broker currently added
+  in this browser tab (SEMP URL, VPN, username, password, label) as one
+  `.yaml` file, and "Import config" reads one back and connects to every
+  broker it lists. Handy for re-using a connection or distributing a
+  multi-broker mesh setup without retyping it each time. The file contains
+  passwords in clear text and never touches the server - it's generated and
+  read entirely in the browser, and only remembers credentials for brokers
+  added since the last page load - but treat it like the passwords
+  themselves once it's on disk. Format:
   ```yaml
   brokers:
     - baseUrl: http://broker-host:8080/SEMP
@@ -45,6 +47,9 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
       password: secret
       label: EU-Broker   # optional
   ```
+- **Export the diagram as SVG.** "Export as SVG" in the diagram toolbar
+  downloads the current view (respecting whatever filter/sort is active) as
+  a standalone `.svg` file, e.g. to drop into a slide deck or doc.
 - **Multiple broker connections at once.** Add several brokers on the
   Connect screen (e.g. a mesh of brokers) - all of them get queried and
   combined into one diagram. Each broker gets its own color; endpoints
