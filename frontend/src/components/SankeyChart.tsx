@@ -58,7 +58,7 @@ export function SankeyChart({
   // that guarantees hovering/clicking a connector and the block/text it
   // leads into are always exactly the same, by construction.
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [sortMode, setSortMode] = useState<SortMode>("topic");
+  const [sortMode, setSortMode] = useState<SortMode>("crossing");
 
   useEffect(() => {
     const el = containerRef.current;
