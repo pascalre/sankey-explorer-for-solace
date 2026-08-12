@@ -8,6 +8,7 @@ import { buildEndpointOwners } from "./lib/buildEndpointOwners";
 import { buildBrokerColorPalette, buildEndpointBrokerColors } from "./lib/buildEndpointBrokerColors";
 import { buildEndpointBrokerLabels } from "./lib/buildEndpointBrokerLabels";
 import { buildEndpointVpnHost } from "./lib/buildEndpointVpnHost";
+import type { BrokerConfigEntry } from "./lib/brokerConfig";
 import type { BrokerConnectionStatus, EndpointInfo, SessionInfo } from "./types";
 import "./index.css";
 
@@ -23,6 +24,11 @@ function App() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  // Credentials for currently-connected brokers, kept in memory only, so the
+  // Connect screen's "Export config" can save all of them at once - lifted
+  // here (rather than local to ConnectScreen) so it survives navigating to
+  // the diagram view and back. See ConnectScreenProps for details.
+  const [brokerConfigs, setBrokerConfigs] = useState<Map<string, BrokerConfigEntry>>(new Map());
 
   const loadSession = useCallback(async () => {
     try {
@@ -90,6 +96,7 @@ function App() {
   async function handleDisconnectAll() {
     await api.disconnectAll();
     setSession((prev) => (prev ? { ...prev, brokers: [] } : prev));
+    setBrokerConfigs(new Map());
     setView({ kind: "connect" });
   }
 
@@ -150,6 +157,8 @@ function App() {
           <ConnectScreen
             brokers={session?.brokers ?? []}
             onBrokersChanged={handleBrokersChanged}
+            brokerConfigs={brokerConfigs}
+            onBrokerConfigsChanged={setBrokerConfigs}
             onDone={loadEndpoints}
           />
         )}

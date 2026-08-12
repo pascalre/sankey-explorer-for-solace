@@ -21,13 +21,30 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 
 - **Broker credentials are entered at runtime in the UI** (the "Connect to
   Broker" screen), not as deploy config. They live exclusively server-side
-  in memory, per session, never in the client or on disk.
+  in memory, per session, never in the client or on disk - except when the
+  user explicitly chooses to save them (see below).
 - **App login is optional** (`APP_USERNAME` + `APP_PASSWORD_HASH`). Leave
   both empty and the tool runs in "workshop mode" with no login - the
   customer's network boundary is then the access control.
 
 ## Features
 
+- **Save/import connection config as YAML.** On the Connect screen, "Save
+  config as file" downloads the current form (SEMP URL, VPN, username,
+  password, label) as a `.yaml` file, and "Import config" reads one back and
+  connects to every broker it lists. Handy for re-using a connection or
+  distributing a multi-broker mesh setup without retyping it each time. The
+  file contains the password in clear text and never touches the server -
+  it's generated and read entirely in the browser - but treat it like the
+  password itself once it's on disk. Format:
+  ```yaml
+  brokers:
+    - baseUrl: http://broker-host:8080/SEMP
+      vpn: default
+      username: ro-user
+      password: secret
+      label: EU-Broker   # optional
+  ```
 - **Multiple broker connections at once.** Add several brokers on the
   Connect screen (e.g. a mesh of brokers) - all of them get queried and
   combined into one diagram. Each broker gets its own color; endpoints
