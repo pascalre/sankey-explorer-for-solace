@@ -3,6 +3,7 @@ import { parser } from "../semp/client.js";
 import {
   fetchAllEndpoints,
   fetchEndpointsAcrossConnections,
+  parseClientPages,
   parseQueuePages,
   parseTopicEndpointPages,
 } from "../semp/queries.js";
@@ -161,14 +162,92 @@ describe("parseTopicEndpointPages", () => {
   });
 });
 
+describe("parseClientPages", () => {
+  it("extracts client name and direct topic subscriptions from the confirmed *-virtual-router shape", () => {
+    // Confirmed against Solace's own docs example for a plain "show client"
+    // reply (https://docs.solace.com/Admin/SEMP/Using-Legacy-SEMP.htm) -
+    // clients nest under <primary-virtual-router>, not a <clients> wrapper.
+    const xml = `<show><client><primary-virtual-router><client>
+      <name>my-app-1</name>
+      <subscriptions>
+        <subscription><topic>orders/created</topic></subscription>
+      </subscriptions>
+    </client></primary-virtual-router></client></show>`;
+
+    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
+    const result = parseClientPages([reply], "default");
+
+    expect(result).toEqual([
+      {
+        type: "direct-subscriber",
+        name: "my-app-1",
+        vpn: "default",
+        subscriptions: ["orders/created"],
+      },
+    ]);
+  });
+
+  it("also finds clients under an unverified flat <clients> wrapper (defensive - exact nesting isn't confirmed once <subscriptions/> is requested)", () => {
+    const xml = `<show><client><clients><client>
+      <name>my-app-1</name>
+      <subscriptions>
+        <subscription><topic>orders/created</topic></subscription>
+      </subscriptions>
+    </client></clients></client></show>`;
+
+    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
+    const result = parseClientPages([reply], "default");
+
+    expect(result.map((e) => e.name)).toEqual(["my-app-1"]);
+  });
+
+  it("accepts <topic-subscription> as an alternate per-subscription element name", () => {
+    const xml = `<show><client><primary-virtual-router><client>
+      <name>my-app-1</name>
+      <subscriptions>
+        <subscription><topic-subscription>orders/created</topic-subscription></subscription>
+      </subscriptions>
+    </client></primary-virtual-router></client></show>`;
+
+    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
+    const result = parseClientPages([reply], "default");
+
+    expect(result[0]?.subscriptions).toEqual(["orders/created"]);
+  });
+
+  it("skips clients with no direct topic subscriptions", () => {
+    const xml = `<show><client><primary-virtual-router><client>
+      <name>queue-consumer-only</name>
+    </client></primary-virtual-router></client></show>`;
+
+    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
+    const result = parseClientPages([reply], "default");
+
+    expect(result).toEqual([]);
+  });
+
+  it("merges multiple pages (paging) into one flat list", () => {
+    const page1 = parseReplyBody(
+      `<show><client><primary-virtual-router><client><name>c1</name><subscriptions><subscription><topic>a</topic></subscription></subscriptions></client></primary-virtual-router></client></show>`,
+    ) as unknown as Record<string, unknown>;
+    const page2 = parseReplyBody(
+      `<show><client><primary-virtual-router><client><name>c2</name><subscriptions><subscription><topic>b</topic></subscription></subscriptions></client></primary-virtual-router></client></show>`,
+    ) as unknown as Record<string, unknown>;
+
+    const result = parseClientPages([page1, page2], "default");
+
+    expect(result.map((e) => e.name)).toEqual(["c1", "c2"]);
+  });
+});
+
 describe("fetchAllEndpoints request building", () => {
   it("escapes XML special characters in the vpn name to prevent XML injection", async () => {
     const { client, capturedBuilders } = fakeClientCapturingRequests();
 
     await fetchAllEndpoints(client, `evil"vpn'<inject>&</inject>`);
 
-    // Two sendPagedRpc calls: one for queues, one for topic-endpoints.
-    expect(capturedBuilders).toHaveLength(2);
+    // Three sendPagedRpc calls: queues, topic-endpoints, direct subscribers.
+    expect(capturedBuilders).toHaveLength(3);
     for (const builder of capturedBuilders) {
       const xml = builder(null);
       expect(xml).not.toContain("<inject>");
@@ -179,12 +258,12 @@ describe("fetchAllEndpoints request building", () => {
     }
   });
 
-  it("includes the vpn name and <subscriptions/> flag in both the queue and topic-endpoint request", async () => {
+  it("includes the vpn name and <subscriptions/> flag in the queue, topic-endpoint and client request", async () => {
     const { client, capturedBuilders } = fakeClientCapturingRequests();
 
     await fetchAllEndpoints(client, "my-vpn");
 
-    const [queueXml, topicEndpointXml] = capturedBuilders.map((b) => b(null));
+    const [queueXml, topicEndpointXml, clientXml] = capturedBuilders.map((b) => b(null));
     expect(queueXml).toContain("<show><queue>");
     expect(queueXml).toContain("<vpn-name>my-vpn</vpn-name>");
     expect(queueXml).toContain("<subscriptions/>");
@@ -192,6 +271,10 @@ describe("fetchAllEndpoints request building", () => {
     expect(topicEndpointXml).toContain("<show><topic-endpoint>");
     expect(topicEndpointXml).toContain("<vpn-name>my-vpn</vpn-name>");
     expect(topicEndpointXml).toContain("<subscriptions/>");
+
+    expect(clientXml).toContain("<show><client>");
+    expect(clientXml).toContain("<vpn-name>my-vpn</vpn-name>");
+    expect(clientXml).toContain("<subscriptions/>");
   });
 
   it("embeds a more-cookie into the request when paging", async () => {
@@ -219,12 +302,16 @@ describe("fetchEndpointsAcrossConnections", () => {
     const emptyTopicEndpointPage = {
       rpc: { show: { "topic-endpoint": [{ "topic-endpoints": {} }] } },
     };
+    const emptyClientPage = {
+      rpc: { show: { client: [{ "primary-virtual-router": {} }] } },
+    };
 
     const client = {
       sendPagedRpc: vi
         .fn()
         .mockResolvedValueOnce([queuePage])
-        .mockResolvedValueOnce([emptyTopicEndpointPage]),
+        .mockResolvedValueOnce([emptyTopicEndpointPage])
+        .mockResolvedValueOnce([emptyClientPage]),
     } as unknown as SempV1Client;
 
     return {

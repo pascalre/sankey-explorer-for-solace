@@ -18,6 +18,41 @@ import type { EndpointInfo, RawEndpointInfo } from "./types.js";
  *     </queues></queue></show></rpc>
  *   </rpc-reply>
  *
+ * "show client ... subscriptions" (direct subscribers) is a DIFFERENT
+ * shape, confirmed against Solace's own docs (a plain "show client" reply -
+ * see https://docs.solace.com/Admin/SEMP/Using-Legacy-SEMP.htm - nests
+ * clients under a *-virtual-router element, not a "clients" wrapper like
+ * queues/topic-endpoints do):
+ *
+ *   <rpc-reply>
+ *     <rpc><show><client>
+ *       <primary-virtual-router>
+ *         <client>
+ *           <name>my-app-1</name>
+ *           <subscriptions>
+ *             <subscription><topic>orders/&gt;</topic></subscription>
+ *           </subscriptions>
+ *         </client>
+ *       </primary-virtual-router>
+ *     </client></show></rpc>
+ *   </rpc-reply>
+ *
+ * The confirmed docs example only shows <num-subscriptions> (a count), not
+ * the actual subscribed topics, for a plain "show client" - so whether the
+ * per-subscription topic string is really under a <topic> element (as
+ * above, matching queues/topic-endpoints) once <subscriptions/> is
+ * requested, or under a differently-named element (e.g.
+ * <topic-subscription>, seen elsewhere in Solace's docs for MQTT
+ * subscriptions), is still unverified. parseClientPages() below therefore
+ * (a) searches the whole reply recursively for client-shaped entries
+ * instead of assuming one fixed container path, and (b) accepts either
+ * <topic> or <topic-subscription> as the per-subscription element name -
+ * so it has the best chance of working even if either detail differs from
+ * what's assumed here. If direct subscribers still don't show up, capture
+ * the raw XML reply (e.g. via curl - see the file-level example request
+ * below) and adjust extractSubscriptionTopics()/parseClientPages()
+ * accordingly - nothing else needs to change.
+ *
  * If your broker responds differently: touch ONLY this file - the rest of
  * the app (routes, frontend) only knows `EndpointInfo[]` and stays unaffected.
  */
@@ -47,6 +82,19 @@ function buildShowTopicEndpointRequest(
   )}</vpn-name><subscriptions/>${moreCookieXml ?? ""}</topic-endpoint></show>`;
 }
 
+/**
+ * "Direct subscribers": clients consuming directly off their own topic
+ * subscriptions, with no durable queue or topic-endpoint in between. SEMP
+ * v1's "show client ... subscriptions" reports each connected client's
+ * direct topic subscriptions - same shape/assumptions as the queue and
+ * topic-endpoint requests above (see the file-level comment).
+ */
+function buildShowClientRequest(vpn: string, moreCookieXml: string | null): string {
+  return `<show><client><name>*</name><vpn-name>${escapeXml(
+    vpn,
+  )}</vpn-name><subscriptions/>${moreCookieXml ?? ""}</client></show>`;
+}
+
 /** Normalizes fast-xml-parser output: a child node can be an object, an array, or missing. */
 function asArray<T>(value: T | T[] | undefined): T[] {
   if (value === undefined) return [];
@@ -62,10 +110,47 @@ function extractSubscriptionTopics(node: unknown): string[] {
   return subscriptionEntries
     .map((entry) => {
       if (typeof entry === "string") return entry;
-      const topic = (entry as Record<string, unknown>)?.["topic"];
+      const record = entry as Record<string, unknown> | undefined;
+      // <topic> is confirmed for queues/topic-endpoints. <topic-subscription>
+      // is an unverified fallback for direct subscribers - see the
+      // file-level comment on why the exact element name there is unclear.
+      const topic = record?.["topic"] ?? record?.["topic-subscription"];
       return typeof topic === "string" ? topic : null;
     })
     .filter((topic): topic is string => topic !== null && topic.length > 0);
+}
+
+/**
+ * Recursively searches a parsed SEMP reply for any object that looks like
+ * a client with direct subscriptions (has a string `name` plus a
+ * `subscriptions` object) - used instead of a fixed container path for
+ * parseClientPages() below, since the exact nesting (Solace's confirmed
+ * plain "show client" reply nests clients under a *-virtual-router
+ * element, e.g. <primary-virtual-router>, not the <clients> wrapper
+ * queues/topic-endpoints use) is unverified once <subscriptions/> is
+ * requested. Stops recursing into a match itself (a client entry's own
+ * fields, like its subscriptions list, aren't further client entries).
+ */
+function findClientLikeEntries(
+  node: unknown,
+  seen: Set<unknown> = new Set(),
+): Record<string, unknown>[] {
+  if (node === null || typeof node !== "object" || seen.has(node)) return [];
+  seen.add(node);
+
+  if (Array.isArray(node)) {
+    return node.flatMap((item) => findClientLikeEntries(item, seen));
+  }
+
+  const record = node as Record<string, unknown>;
+  const looksLikeClient =
+    typeof record["name"] === "string" &&
+    typeof record["subscriptions"] === "object" &&
+    record["subscriptions"] !== null;
+
+  if (looksLikeClient) return [record];
+
+  return Object.values(record).flatMap((value) => findClientLikeEntries(value, seen));
 }
 
 /**
@@ -165,20 +250,58 @@ export function parseTopicEndpointPages(
   return endpoints;
 }
 
+/**
+ * A client only counts as a "direct subscriber" node worth showing if it
+ * actually has at least one direct topic subscription - "show client *"
+ * also returns clients with none (e.g. ones only consuming via a queue),
+ * and those would otherwise show up as disconnected, edge-less nodes.
+ */
+export function parseClientPages(
+  pages: Record<string, unknown>[],
+  vpn: string,
+): RawEndpointInfo[] {
+  const endpoints: RawEndpointInfo[] = [];
+
+  for (const page of pages) {
+    const rpc = page["rpc"] as Record<string, unknown> | undefined;
+    const show = rpc?.["show"] as Record<string, unknown> | undefined;
+    const clientRoot = asArray(
+      show?.["client"] as Record<string, unknown> | Record<string, unknown>[] | undefined,
+    )[0];
+    // Deliberately not a fixed path (unlike queue/topic-endpoint above) -
+    // see findClientLikeEntries()'s doc comment for why.
+    const clientEntries = findClientLikeEntries(clientRoot);
+
+    for (const entry of clientEntries) {
+      const name = entry["name"];
+      if (typeof name !== "string") continue;
+
+      const subscriptions = extractSubscriptionTopics(entry);
+      if (subscriptions.length === 0) continue;
+
+      endpoints.push({ type: "direct-subscriber", name, vpn, subscriptions });
+    }
+  }
+
+  return endpoints;
+}
+
 export async function fetchAllEndpoints(
   client: SempV1Client,
   vpn: string,
 ): Promise<RawEndpointInfo[]> {
-  const [queuePages, topicEndpointPages] = await Promise.all([
+  const [queuePages, topicEndpointPages, clientPages] = await Promise.all([
     client.sendPagedRpc((moreCookie) => buildShowQueueRequest(vpn, moreCookie)),
     client.sendPagedRpc((moreCookie) =>
       buildShowTopicEndpointRequest(vpn, moreCookie),
     ),
+    client.sendPagedRpc((moreCookie) => buildShowClientRequest(vpn, moreCookie)),
   ]);
 
   return [
     ...parseQueuePages(queuePages, vpn),
     ...parseTopicEndpointPages(topicEndpointPages, vpn),
+    ...parseClientPages(clientPages, vpn),
   ];
 }
 

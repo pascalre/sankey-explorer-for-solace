@@ -9,6 +9,7 @@ import {
   removeBrokerConnection,
 } from "../semp/connectionStore.js";
 import { config } from "../config.js";
+import { logError, logInfo } from "../logger.js";
 
 export const connectionRouter = Router();
 connectionRouter.use(requireAuth);
@@ -76,18 +77,28 @@ connectionRouter.post("/connection", connectRateLimit, async (req, res) => {
     minRequestIntervalMs: config.sempMinRequestIntervalMs,
   });
 
+  // Never include `password` in a log line below - see logger.ts.
+  const connectionDesc = `${baseUrl} (vpn=${vpn}, username=${username}${label ? `, label=${label}` : ""})`;
+
   try {
     await client.ping();
   } catch (err) {
-    const message =
-      err instanceof SempError
-        ? "Could not connect - check URL, VPN and credentials"
-        : "Unexpected error while connecting";
+    // The message returned to the Connect screen deliberately includes the
+    // actual SEMP/network failure reason (HTTP status, DNS/connection
+    // refused, etc.) rather than a generic string - whoever is entering
+    // credentials for a customer's broker needs that detail to debug a
+    // failed connection, and it's the same detail /api/endpoints and
+    // /api/sankey-edges already surface for query failures further down
+    // the line. It's also always logged server-side (see logger.ts doc
+    // comment on why that matters for this deployment model).
+    const message = err instanceof SempError ? `Could not connect: ${err.message}` : "Unexpected error while connecting";
+    logError(`Connection attempt failed for ${connectionDesc}`, err);
     res.status(400).json({ error: message });
     return;
   }
 
   addBrokerConnection(req.sessionID, { baseUrl, vpn, username, password, label });
+  logInfo(`Connected to ${connectionDesc}`);
   res.json(getBrokerConnectionsStatus(req.sessionID));
 });
 

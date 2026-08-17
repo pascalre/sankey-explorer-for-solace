@@ -25,6 +25,23 @@ describe("toSankeyEdges", () => {
     );
   });
 
+  it("labels a direct-subscriber endpoint distinctly from a queue or topic-endpoint", () => {
+    const endpoints: EndpointInfo[] = [
+      {
+        type: "direct-subscriber",
+        name: "my-app-1",
+        vpn: "default",
+        subscriptions: ["orders/created"],
+        brokerLabel: "default",
+        brokerHost: "localhost:8080",
+      },
+    ];
+
+    expect(toSankeyEdges(endpoints)).toEqual([
+      { source: "orders/created", target: "Direct Subscriber: my-app-1", value: 1 },
+    ]);
+  });
+
   it("does not suffix the broker label when only one broker is present", () => {
     const endpoints: EndpointInfo[] = [
       {

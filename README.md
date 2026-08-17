@@ -1,8 +1,8 @@
 # Sankey Explorer for Solace
 
-Visualizes which topic subscriptions map to which queues and topic endpoints
-of a Solace broker - as a Sankey diagram. Data comes live via SEMP v1
-(Legacy SEMP, XML/RPC).
+Visualizes which topic subscriptions map to which queues, topic endpoints,
+and direct subscribers of a Solace broker - as a Sankey diagram. Data comes
+live via SEMP v1 (Legacy SEMP, XML/RPC).
 
 ## Architecture
 
@@ -50,12 +50,17 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 - **Export the diagram as SVG.** "Export as SVG" in the diagram toolbar
   downloads the current view (respecting whatever filter/sort is active) as
   a standalone `.svg` file, e.g. to drop into a slide deck or doc.
+- **Three endpoint types.** Besides queues and topic-endpoints, the diagram
+  also shows **direct subscribers** - clients consuming straight off their
+  own topic subscriptions, with no durable queue or topic-endpoint in
+  between (SEMP v1 "show client ... subscriptions"). Each type gets its own
+  color (queue: green, topic-endpoint: orange, direct subscriber: yellow).
 - **Multiple broker connections at once.** Add several brokers on the
   Connect screen (e.g. a mesh of brokers) - all of them get queried and
   combined into one diagram. Each broker gets its own color; endpoints
   are colored by broker once 2+ are connected (falls back to the
-  queue/topic-endpoint type coloring with just one). Same-named endpoints
-  across different brokers are automatically disambiguated
+  per-type coloring with just one). Same-named endpoints across different
+  brokers are automatically disambiguated
   (`Queue: orders-q (EU-Broker)` vs `Queue: orders-q (US-Broker)`).
 - Topic subscriptions are split along `/` into a hierarchy of prefix nodes
   in the diagram (e.g. `acme/sales/orders/>` becomes a chain of nodes).
@@ -103,6 +108,33 @@ docker run -p 4000:4000 \
 
 One Node process serves the API (`/api/*`) and the built frontend from the
 same origin. `/healthz` for liveness probes.
+
+## Troubleshooting a broker connection
+
+The "Connect to Message VPN" screen deliberately shows a short, specific
+error (e.g. "Could not connect: SEMP request failed (network): ...") rather
+than a generic one, and the same detail plus the broker URL/VPN/username
+(**never** the password) is always logged server-side - see
+`backend/src/logger.ts`. Where those logs show up depends on how the backend
+is running:
+
+- **Container:** `docker logs <container>` (add `-f` to follow live).
+- **Local dev (`npm run dev`):** printed directly to the terminal running
+  the backend.
+
+A failed connect logs a line like:
+
+```
+[2026-08-17T10:00:00.000Z] Connection attempt failed for http://customer-broker:8080/SEMP (vpn=default, username=ro-user) SempError: SEMP request failed: HTTP 401 Unauthorized
+```
+
+The message after `SempError:` is the actual cause - wrong credentials (401),
+wrong VPN/unreachable host (network error, see `backend/src/semp/client.ts`),
+or a non-2xx HTTP status from something in between (proxy, load balancer).
+A successful connect logs a similar "Connected to ..." line. If the broker
+accepts the connection (ping succeeds) but queries still fail once you're
+past the Connect screen, look for the same detail logged against
+`GET /api/endpoints` or `GET /api/sankey-edges` instead.
 
 ## Grafana path (later, not built yet)
 

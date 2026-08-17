@@ -8,6 +8,7 @@ import { authRouter } from "./routes/auth.js";
 import { connectionRouter } from "./routes/connection.js";
 import { endpointsRouter } from "./routes/endpoints.js";
 import { sankeyRouter } from "./routes/sankey.js";
+import { logError } from "./logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // In the built image, the frontend dist sits next to the backend's dist -
@@ -67,7 +68,7 @@ export function createServer() {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       _next: express.NextFunction,
     ) => {
-      console.error(err);
+      logError("Unhandled error", err);
       res.status(500).json({ error: "Internal server error" });
     },
   );

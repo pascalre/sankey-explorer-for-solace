@@ -21,6 +21,14 @@ describe("toSankeyEdges", () => {
         brokerLabel: "default",
         brokerHost: "localhost:8080",
       },
+      {
+        type: "direct-subscriber",
+        name: "my-app-1",
+        vpn: "default",
+        subscriptions: ["orders/created"],
+        brokerLabel: "default",
+        brokerHost: "localhost:8080",
+      },
     ];
 
     const edges = toSankeyEdges(endpoints);
@@ -34,9 +42,14 @@ describe("toSankeyEdges", () => {
           target: "Topic Endpoint: te-orders",
           value: 1,
         },
+        {
+          source: "orders/created",
+          target: "Direct Subscriber: my-app-1",
+          value: 1,
+        },
       ]),
     );
-    expect(edges).toHaveLength(3);
+    expect(edges).toHaveLength(4);
   });
 
   it("merges duplicate subscriptions on the same endpoint into one edge with value > 1", () => {

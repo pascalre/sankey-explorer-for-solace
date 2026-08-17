@@ -1,7 +1,13 @@
-export type EndpointType = "queue" | "topic-endpoint";
+export type EndpointType = "queue" | "topic-endpoint" | "direct-subscriber";
 
 export interface EndpointInfo {
   type: EndpointType;
+  /**
+   * The queue/topic-endpoint name, or - for type "direct-subscriber" - the
+   * connected client's name. A "direct subscriber" is a client consuming
+   * directly off its own topic subscriptions, with no durable queue or
+   * topic-endpoint in between (SEMP v1 "show client ... subscriptions").
+   */
   name: string;
   vpn: string;
   /** Topic subscriptions mapped to this endpoint. */
@@ -10,7 +16,8 @@ export interface EndpointInfo {
    * The client-username SEMP reports as the endpoint's owner, if any.
    * Undefined if the broker reply has no <owner> element (unverified for
    * topic-endpoints specifically - queues reliably have this, but whether
-   * topic-endpoints do too needs checking against a real broker).
+   * topic-endpoints do too needs checking against a real broker). Not
+   * applicable to direct subscribers - always undefined for those.
    */
   owner?: string;
   /**

@@ -3,6 +3,7 @@ import { requireAuth, requireBrokerConnection } from "../auth/middleware.js";
 import { listBrokerConnections } from "../semp/connectionStore.js";
 import { fetchEndpointsAcrossConnections } from "../semp/queries.js";
 import { SempError } from "../semp/client.js";
+import { logError } from "../logger.js";
 
 export const endpointsRouter = Router();
 
@@ -23,6 +24,7 @@ endpointsRouter.get(
       res.json(endpoints);
     } catch (err) {
       const message = err instanceof SempError ? err.message : "Unexpected error";
+      logError("GET /api/endpoints failed while querying one or more brokers", err);
       res.status(502).json({ error: message });
     }
   },

@@ -6,20 +6,26 @@ export interface SankeyEdge {
   value: number;
 }
 
+const TYPE_LABELS: Record<EndpointInfo["type"], string> = {
+  queue: "Queue",
+  "topic-endpoint": "Topic Endpoint",
+  "direct-subscriber": "Direct Subscriber",
+};
+
 /**
- * Human-readable node label, unique per queue/topic-endpoint. Appends the
- * broker label (e.g. "Queue: orders-q (EU-Broker)") ONLY when multiple
- * distinct brokers are present in this dataset - with a single broker the
- * suffix would just be clutter, but with several it's required for
- * correctness: two different brokers can easily have same-named queues,
- * and without this they'd incorrectly merge into one Sankey node.
+ * Human-readable node label, unique per queue/topic-endpoint/direct
+ * subscriber. Appends the broker label (e.g. "Queue: orders-q
+ * (EU-Broker)") ONLY when multiple distinct brokers are present in this
+ * dataset - with a single broker the suffix would just be clutter, but
+ * with several it's required for correctness: two different brokers can
+ * easily have same-named queues (or clients), and without this they'd
+ * incorrectly merge into one Sankey node.
  */
 export function endpointLabel(
   endpoint: Pick<EndpointInfo, "type" | "name" | "brokerLabel">,
   showBrokerSuffix: boolean,
 ): string {
-  const typeLabel = endpoint.type === "queue" ? "Queue" : "Topic Endpoint";
-  const base = `${typeLabel}: ${endpoint.name}`;
+  const base = `${TYPE_LABELS[endpoint.type]}: ${endpoint.name}`;
   return showBrokerSuffix ? `${base} (${endpoint.brokerLabel})` : base;
 }
 

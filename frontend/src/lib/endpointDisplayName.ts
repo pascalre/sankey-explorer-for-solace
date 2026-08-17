@@ -1,6 +1,6 @@
 import { isEndpointNode } from "./nodeKind";
 
-const TYPE_PREFIXES = ["Queue: ", "Topic Endpoint: "];
+const TYPE_PREFIXES = ["Queue: ", "Topic Endpoint: ", "Direct Subscriber: "];
 
 /**
  * Strips the type prefix ("Queue: "/"Topic Endpoint: ") and any trailing

@@ -10,6 +10,10 @@ describe("endpointDisplayName", () => {
     expect(endpointDisplayName("Topic Endpoint: te-orders")).toBe("te-orders");
   });
 
+  it("strips the 'Direct Subscriber: ' prefix", () => {
+    expect(endpointDisplayName("Direct Subscriber: my-app-1")).toBe("my-app-1");
+  });
+
   it("strips a trailing broker-disambiguation suffix in parentheses", () => {
     expect(endpointDisplayName("Queue: orders-q (EU-Broker)")).toBe("orders-q");
   });

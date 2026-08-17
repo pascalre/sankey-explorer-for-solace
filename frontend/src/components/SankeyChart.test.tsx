@@ -29,6 +29,16 @@ describe("SankeyChart - labels", () => {
     expect(screen.getByText("Queue")).toBeInTheDocument();
   });
 
+  it("renders a direct subscriber node with its own type sub-label, distinct from a queue", () => {
+    render(
+      <SankeyChart
+        edges={[{ source: "acme/sales", target: "Direct Subscriber: my-app-1", value: 1 }]}
+      />,
+    );
+    expect(screen.getByText("my-app-1")).toBeInTheDocument();
+    expect(screen.getByText("Direct Subscriber")).toBeInTheDocument();
+  });
+
   it("shows the owner sub-label when provided", () => {
     render(
       <SankeyChart

@@ -67,7 +67,7 @@ describe("ConnectScreen - first connection (no brokers yet)", () => {
     renderConnectScreen({ onBrokersChanged, onBrokerConfigsChanged });
     await user.type(screen.getByLabelText("Username"), "ro");
     await user.type(screen.getByLabelText("Password"), "secret");
-    await user.click(screen.getByRole("button", { name: "Connect →" }));
+    await user.click(screen.getByRole("button", { name: "Connect" }));
 
     expect(api.connect).toHaveBeenCalledWith(
       expect.objectContaining({ username: "ro", password: "secret" }),
@@ -92,7 +92,7 @@ describe("ConnectScreen - first connection (no brokers yet)", () => {
     renderConnectScreen();
     await user.type(screen.getByLabelText("Username"), "ro");
     await user.type(screen.getByLabelText("Password"), "wrong");
-    await user.click(screen.getByRole("button", { name: "Connect →" }));
+    await user.click(screen.getByRole("button", { name: "Connect" }));
 
     expect(
       await screen.findByText("Could not connect - check URL, VPN and credentials"),

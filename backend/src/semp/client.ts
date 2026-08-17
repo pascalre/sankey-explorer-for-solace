@@ -28,7 +28,7 @@ export const parser = new XMLParser({
   isArray: (name) =>
     // These elements typically appear as a list in SEMP v1 replies, even
     // when only 1 element comes back -> always treat as an array.
-    ["queue", "topic-endpoint", "subscription"].includes(name),
+    ["queue", "topic-endpoint", "client", "subscription"].includes(name),
 });
 
 export class SempV1Client {

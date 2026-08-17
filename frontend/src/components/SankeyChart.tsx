@@ -34,7 +34,8 @@ function nodeColor(id: string, brokerColors: EndpointBrokerColors | undefined): 
   }
 
   if (id.startsWith("Queue:")) return "#00C895"; // Classic Green - 01
-  return "#FCA829"; // Secondary Orange - Topic Endpoint
+  if (id.startsWith("Topic Endpoint:")) return "#FCA829"; // Secondary Orange
+  return "#FFF7C2"; // Secondary Sunrise Yellow - Direct Subscriber
 }
 
 function edgeKey(source: string, target: string): string {

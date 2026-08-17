@@ -1,7 +1,12 @@
-export type EndpointType = "queue" | "topic-endpoint";
+export type EndpointType = "queue" | "topic-endpoint" | "direct-subscriber";
 
 export interface EndpointInfo {
   type: EndpointType;
+  /**
+   * The queue/topic-endpoint name, or - for type "direct-subscriber" - the
+   * connected client's name (a client consuming directly off its own topic
+   * subscriptions, with no durable queue or topic-endpoint in between).
+   */
   name: string;
   vpn: string;
   subscriptions: string[];
