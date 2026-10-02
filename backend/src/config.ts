@@ -1,10 +1,13 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
+import { logInfo } from "./logger.js";
 
 /**
- * All secrets/config come exclusively from env vars.
- * Local: .env (gitignored). Prod: GCP Secret Manager -> env-mounted (Cloud Run).
- * Fails hard at startup if a required value is missing - fail fast instead
- * of limping along with broken config in the background.
+ * All config comes exclusively from env vars, all of it optional (see
+ * buildConfig's doc comment) - this app is meant to run with zero required
+ * configuration ("docker pull && docker run"). Local: .env (gitignored).
+ * Prod: GCP Secret Manager -> env-mounted (Cloud Run), or just `docker run
+ * -e ...` for the optional app login.
  */
 
 export interface AppConfig {
@@ -17,14 +20,6 @@ export interface AppConfig {
   };
   loginRequired: boolean;
   isProduction: boolean;
-}
-
-function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
-  const value = env[name];
-  if (!value || value.trim() === "") {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
 }
 
 /**
@@ -44,13 +39,24 @@ function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
  * - The app login (access gate for the tool itself) is OPTIONAL: set via
  *   APP_USERNAME + APP_PASSWORD_HASH. Leave both empty -> "workshop mode"
  *   with no login (the customer's network boundary is then the access
- *   control). SESSION_SECRET is always required regardless of login mode,
- *   because the session (which also carries the broker connection) must
- *   always be signed.
+ *   control).
+ * - SESSION_SECRET is NOT required: if unset, a random one is generated
+ *   per process start. That's safe here specifically because sessions
+ *   (and the broker connections they carry) already live only in memory
+ *   (see semp/connectionStore.ts) - a restart drops them regardless of
+ *   whether the secret is stable, so there's nothing to gain from
+ *   requiring the operator to supply one up front. This is what makes
+ *   "docker pull && docker run" work with zero required configuration.
+ *   Set SESSION_SECRET explicitly only if you run multiple replicas behind
+ *   a load balancer and need them to share one signing secret (that setup
+ *   also needs an external session store - see the TODO in
+ *   connectionStore.ts - a random per-process secret wouldn't help there
+ *   anyway, since sessions wouldn't be shared across replicas either).
  */
 export function buildConfig(env: NodeJS.ProcessEnv): AppConfig {
   const username = env.APP_USERNAME ?? null;
   const passwordHash = env.APP_PASSWORD_HASH ?? null;
+  const sessionSecret = env.SESSION_SECRET?.trim() || generateEphemeralSecret();
 
   return {
     port: Number(env.PORT ?? 4000),
@@ -60,11 +66,20 @@ export function buildConfig(env: NodeJS.ProcessEnv): AppConfig {
       username,
       // bcrypt hash, NEVER a plaintext password. Generate with: node scripts/hash-password.mjs
       passwordHash,
-      sessionSecret: requireEnv(env, "SESSION_SECRET"),
+      sessionSecret,
     },
     loginRequired: Boolean(username && passwordHash),
     isProduction: env.NODE_ENV === "production",
   };
+}
+
+function generateEphemeralSecret(): string {
+  logInfo(
+    "SESSION_SECRET not set - generated a random one for this process. " +
+      "Sessions won't survive a restart (they don't anyway - see connectionStore.ts). " +
+      "Set SESSION_SECRET yourself only if you run multiple replicas sharing one session store.",
+  );
+  return randomBytes(32).toString("hex");
 }
 
 /** Fail fast on a half-configured login setup instead of silently falling back to "no login". */

@@ -96,15 +96,52 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
   dark-mode reference) - see comments in `frontend/src/index.css` for the
   exact source pages.
 
-## Setup (local)
+## Quickest way to run it
+
+```bash
+docker pull ghcr.io/pascalre/sankey-explorer-for-solace:latest
+docker run -p 4000:4000 ghcr.io/pascalre/sankey-explorer-for-solace:latest
+```
+
+Then open http://localhost:4000. No required configuration at all - no env
+vars, no `.env` file. `SESSION_SECRET` is optional (see "Zero required
+config" below); leave `APP_USERNAME`/`APP_PASSWORD_HASH` unset too and the
+tool runs in "workshop mode" with no login (see "Deployment model" above).
+Broker URL/VPN/credentials are entered afterwards, in the browser, on the
+"Connect to Message VPN" screen.
+
+The image is built and published automatically by
+`.github/workflows/docker-publish.yml` on every push to `master` (and on
+version tags). One-time setup after the first run: GitHub makes a new
+package PRIVATE by default even in a public repo - go to your GitHub
+profile → Packages → this image → Package settings → Change visibility →
+Public, so others can pull it without authenticating.
+
+### Zero required config
+
+`SESSION_SECRET` doesn't need to be set: if you leave it out, the backend
+generates a random one per process start (see `backend/src/config.ts`).
+That's safe specifically because broker connections live only in memory
+(`backend/src/semp/connectionStore.ts`) and don't survive a restart anyway,
+secret or not. Set it explicitly only if you're running multiple replicas
+behind a load balancer sharing one session store (which needs its own setup
+too - see the TODO in `connectionStore.ts`).
+
+## Build it yourself (container)
+
+```bash
+docker build -t sankey-explorer .
+docker run -p 4000:4000 sankey-explorer
+```
+
+One Node process serves the API (`/api/*`) and the built frontend from the
+same origin. `/healthz` for liveness probes.
+
+## Local development
 
 ```bash
 # Backend
 cd backend
-cp .env.example .env
-# Set SESSION_SECRET, e.g.: openssl rand -hex 32
-# Only set APP_USERNAME/APP_PASSWORD_HASH if you want a login:
-npm run hash-password
 npm install
 npm run dev          # http://localhost:4000
 
@@ -114,23 +151,15 @@ npm install
 npm run dev          # http://localhost:5173, proxies /api -> :4000
 ```
 
+No `.env` file needed to just try it - every backend env var is optional
+(see "Zero required config" above; `backend/.env.example` documents all of
+them, including the optional login and a custom port, if you want either).
+
 Open the frontend in dev mode, enter the broker's SEMP host/VPN/credentials
 in the "Connect" screen (just the host, e.g. `http://localhost:8080` - no
 `/SEMP` path needed, the backend adds `/SEMP/v2/monitor/...` itself). No
 broker handy? Rebuild the mock from the smoke test (see
 `backend/src/__tests__` for the assumed reply structure).
-
-## Deployment (container)
-
-```bash
-docker build -t sankey-explorer .
-docker run -p 4000:4000 \
-  -e SESSION_SECRET=$(openssl rand -hex 32) \
-  sankey-explorer
-```
-
-One Node process serves the API (`/api/*`) and the built frontend from the
-same origin. `/healthz` for liveness probes.
 
 ## Troubleshooting a broker connection
 

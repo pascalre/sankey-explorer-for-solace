@@ -6,8 +6,23 @@ function envWith(overrides: Record<string, string>): NodeJS.ProcessEnv {
 }
 
 describe("buildConfig", () => {
-  it("throws when SESSION_SECRET is missing", () => {
-    expect(() => buildConfig({})).toThrow(/SESSION_SECRET/);
+  it("uses the given SESSION_SECRET when set", () => {
+    const cfg = buildConfig(envWith({}));
+    expect(cfg.app.sessionSecret).toBe("test-secret");
+  });
+
+  it("generates a random SESSION_SECRET when unset, instead of throwing - sessions are in-memory only anyway (see connectionStore.ts), so there's nothing to gain from requiring one up front", () => {
+    const cfg = buildConfig({});
+    expect(cfg.app.sessionSecret).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("generates a DIFFERENT random secret on each call when unset", () => {
+    expect(buildConfig({}).app.sessionSecret).not.toBe(buildConfig({}).app.sessionSecret);
+  });
+
+  it("also generates one when SESSION_SECRET is set but blank", () => {
+    const cfg = buildConfig({ SESSION_SECRET: "   " });
+    expect(cfg.app.sessionSecret).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("defaults port and throttle interval when not set", () => {
