@@ -4,6 +4,8 @@ Visualizes which topic subscriptions map to which queues, topic endpoints,
 and direct subscribers of a Solace broker - as a Sankey diagram. Data comes
 live via SEMP v2 (RESTful JSON).
 
+![Markdown Logo](./img/preview.png)
+
 ## Architecture
 
 ```
