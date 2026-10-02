@@ -200,6 +200,54 @@ describe("SankeyChart - view mode toggle", () => {
   });
 });
 
+describe("SankeyChart - show direct subscribers toggle", () => {
+  const mixedEdges: SankeyEdge[] = [
+    { source: "acme/sales", target: "Queue: orders-q", value: 1 },
+    { source: "acme/sales", target: "Direct Subscriber: my-app-1", value: 1 },
+  ];
+
+  it("is checked by default, showing direct subscribers alongside other endpoints", () => {
+    render(<SankeyChart edges={mixedEdges} />);
+    const checkbox = screen.getByLabelText("Show direct subscribers") as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    expect(screen.getByText("orders-q")).toBeInTheDocument();
+    expect(screen.getByText("my-app-1")).toBeInTheDocument();
+  });
+
+  it("unchecking it hides direct-subscriber nodes but keeps queues/topic-endpoints", async () => {
+    const user = userEvent.setup();
+    render(<SankeyChart edges={mixedEdges} />);
+
+    await user.click(screen.getByLabelText("Show direct subscribers"));
+
+    expect(screen.getByText("orders-q")).toBeInTheDocument();
+    expect(screen.queryByText("my-app-1")).not.toBeInTheDocument();
+  });
+
+  it("re-checking it brings direct subscribers back", async () => {
+    const user = userEvent.setup();
+    render(<SankeyChart edges={mixedEdges} />);
+
+    const checkbox = screen.getByLabelText("Show direct subscribers");
+    await user.click(checkbox);
+    expect(screen.queryByText("my-app-1")).not.toBeInTheDocument();
+
+    await user.click(checkbox);
+    expect(screen.getByText("my-app-1")).toBeInTheDocument();
+  });
+
+  it("toggling it resets any active node selection", async () => {
+    const user = userEvent.setup();
+    render(<SankeyChart edges={mixedEdges} />);
+
+    await user.click(screen.getByText("orders-q"));
+    expect(await screen.findByRole("button", { name: "Back to overview" })).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Show direct subscribers"));
+    expect(screen.queryByRole("button", { name: "Back to overview" })).not.toBeInTheDocument();
+  });
+});
+
 describe("SankeyChart - svg structure", () => {
   it("renders an accessible svg with the expected aria-label", () => {
     render(<SankeyChart edges={basicEdges} />);

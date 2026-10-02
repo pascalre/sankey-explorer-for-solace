@@ -74,6 +74,7 @@ export function SankeyChart({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("crossing");
   const [viewMode, setViewMode] = useState<DiagramViewMode>("dataflow");
+  const [showDirectSubscribers, setShowDirectSubscribers] = useState(true);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -86,13 +87,32 @@ export function SankeyChart({
     return () => observer.disconnect();
   }, []);
 
-  // New data (reconnect/refresh), or switching view mode - a selection on
-  // a node that may no longer exist in the new edge set doesn't make sense
-  // anymore (e.g. a node only reachable via an implied wildcard edge
-  // disappears when switching from "dataflow" to "subscriptions").
+  // New data (reconnect/refresh), switching view mode, or toggling direct
+  // subscribers - a selection on a node that may no longer exist in the
+  // new edge set doesn't make sense anymore (e.g. a node only reachable
+  // via an implied wildcard edge disappears when switching from
+  // "dataflow" to "subscriptions"; a direct-subscriber node disappears
+  // when that toggle is switched off).
   useEffect(() => {
     setSelectedNodeId(null);
-  }, [edges, viewMode]);
+  }, [edges, viewMode, showDirectSubscribers]);
+
+  // "Show direct subscribers" - drops every edge touching a direct-
+  // subscriber node (id prefixed "Direct Subscriber:" by toSankeyEdges)
+  // before anything else runs, so wildcard-coverage/hierarchy exploding
+  // below never sees them and no orphaned direct-subscriber node can
+  // sneak back in via an implied edge.
+  const edgesAfterDirectSubscriberFilter = useMemo(
+    () =>
+      showDirectSubscribers
+        ? edges
+        : edges.filter(
+            (e) =>
+              !e.source.startsWith("Direct Subscriber:") &&
+              !e.target.startsWith("Direct Subscriber:"),
+          ),
+    [edges, showDirectSubscribers],
+  );
 
   // Wildcard subscriptions (e.g. "acme/sales/>") implicitly also receive
   // everything a more specific subscription on a DIFFERENT endpoint (e.g.
@@ -103,8 +123,11 @@ export function SankeyChart({
   // "dataflow" mode - "subscriptions" mode shows the broker's raw,
   // per-endpoint subscription list with no wildcard-coverage edges added.
   const edgesWithWildcardCoverage = useMemo(
-    () => (viewMode === "dataflow" ? addWildcardCoverageEdges(edges) : edges),
-    [edges, viewMode],
+    () =>
+      viewMode === "dataflow"
+        ? addWildcardCoverageEdges(edgesAfterDirectSubscriberFilter)
+        : edgesAfterDirectSubscriberFilter,
+    [edgesAfterDirectSubscriberFilter, viewMode],
   );
   const explodedEdges = useMemo(
     () => explodeTopicHierarchy(edgesWithWildcardCoverage),
@@ -211,6 +234,14 @@ export function SankeyChart({
             <option value="dataflow">Data flow (wildcard-aware)</option>
             <option value="subscriptions">Subscriptions (literal)</option>
           </select>
+        </label>
+        <label className="sankey-sort-control">
+          <input
+            type="checkbox"
+            checked={showDirectSubscribers}
+            onChange={(e) => setShowDirectSubscribers(e.target.checked)}
+          />
+          Show direct subscribers
         </label>
         <label className="sankey-sort-control">
           Sort by
