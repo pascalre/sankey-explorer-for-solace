@@ -102,8 +102,7 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 
 ```bash
 docker pull ghcr.io/pascalre/sankey-explorer-for-solace:latest
-docker run -p 4000:4000 --add-host=host.docker.internal:host-gateway \
-  ghcr.io/pascalre/sankey-explorer-for-solace:latest
+docker run -p 4000:4000 ghcr.io/pascalre/sankey-explorer-for-solace:latest
 ```
 
 Then open http://localhost:4000. No required configuration at all - no env
