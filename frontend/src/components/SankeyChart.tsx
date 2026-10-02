@@ -225,45 +225,62 @@ export function SankeyChart({
   return (
     <div ref={containerRef} className="sankey-container">
       <div className="sankey-toolbar">
-        <label className="sankey-sort-control">
-          View
-          <select
-            value={viewMode}
-            onChange={(e) => setViewMode(e.target.value as DiagramViewMode)}
-          >
-            <option value="dataflow">Data flow (wildcard-aware)</option>
-            <option value="subscriptions">Subscriptions (literal)</option>
-          </select>
-        </label>
-        <label className="sankey-sort-control">
-          <input
-            type="checkbox"
-            checked={showDirectSubscribers}
-            onChange={(e) => setShowDirectSubscribers(e.target.checked)}
-          />
-          Show direct subscribers
-        </label>
-        <label className="sankey-sort-control">
-          Sort by
-          <select
-            value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
-          >
-            <option value="topic">Topic name</option>
-            <option value="queue">Endpoint</option>
-            <option value="owner">Owner</option>
-            <option value="messageVpn">Message VPN</option>
-            <option value="crossing">Crossing minimized</option>
-          </select>
-        </label>
-        {selectedNodeId && (
-          <button onClick={() => setSelectedNodeId(null)}>
-            {"Back to overview"}
+        <div className="toolbar-group">
+          <label className="toolbar-control">
+            View
+            <select
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as DiagramViewMode)}
+            >
+              <option value="dataflow">Data flow (wildcard-aware)</option>
+              <option value="subscriptions">Subscriptions (literal)</option>
+            </select>
+          </label>
+          <label className="toolbar-toggle">
+            <input
+              type="checkbox"
+              className="toolbar-toggle-input"
+              checked={showDirectSubscribers}
+              onChange={(e) => setShowDirectSubscribers(e.target.checked)}
+            />
+            <span className="toolbar-toggle-track" aria-hidden="true" />
+            Show direct subscribers
+          </label>
+        </div>
+        {/* Divider + "Sort by" grouped into one flex item, so flex-wrap on
+            the toolbar never leaves the divider dangling alone at the end
+            of a wrapped row - it only ever wraps together with the
+            control it's introducing. */}
+        <div className="toolbar-group">
+          <div className="toolbar-divider" aria-hidden="true" />
+          <label className="toolbar-control">
+            Sort by
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+            >
+              <option value="topic">Topic name</option>
+              <option value="queue">Endpoint</option>
+              <option value="owner">Owner</option>
+              <option value="messageVpn">Message VPN</option>
+              <option value="crossing">Crossing minimized</option>
+            </select>
+          </label>
+        </div>
+        <div className="toolbar-group toolbar-actions">
+          {selectedNodeId && (
+            <button
+              type="button"
+              className="toolbar-button"
+              onClick={() => setSelectedNodeId(null)}
+            >
+              Back to overview
+            </button>
+          )}
+          <button type="button" className="toolbar-button" onClick={handleExportSvg}>
+            Export as SVG
           </button>
-        )}
-        <button type="button" onClick={handleExportSvg}>
-          Export as SVG
-        </button>
+        </div>
       </div>
       <svg
         ref={svgRef}
