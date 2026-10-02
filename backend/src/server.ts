@@ -37,7 +37,18 @@ export function createServer() {
       saveUninitialized: true,
       cookie: {
         httpOnly: true,
-        secure: config.isProduction,
+        // "auto": Secure is set based on the ACTUAL request (req.secure,
+        // which honors "trust proxy" + X-Forwarded-Proto above) - not just
+        // NODE_ENV. This app is meant to also just work with a plain
+        // `docker run -p 4000:4000 ...` and no reverse proxy/TLS at all
+        // (see README "Quickest way to run it") - a hardcoded `secure:
+        // true` there would make the browser silently drop the session
+        // cookie on every non-HTTPS, non-"localhost" origin, so the broker
+        // connection would "work" (POST succeeds) but immediately vanish
+        // ("Not connected to a broker" on the very next request). "auto"
+        // still sets Secure correctly when a real reverse proxy/Cloud Run
+        // terminates TLS in front of this.
+        secure: "auto",
         sameSite: "lax",
         maxAge: 8 * 60 * 60 * 1000, // 8h - one workshop/work session
       },

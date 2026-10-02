@@ -185,6 +185,17 @@ through SEMP, since it only exists while a client is actually connected).
 
 ## Troubleshooting a broker connection
 
+**Running the app itself in Docker and the broker is also in a container?**
+`localhost` inside the app's container is the container itself, not your
+host - it won't reach a broker whose port is published on your host. Use
+`http://host.docker.internal:8080` as the SEMP host instead (Docker
+Desktop resolves that to the host automatically).
+
+**"Connect" succeeds but the diagram screen immediately says "Not connected
+to a broker"?** That's the session cookie not making it back to the
+browser - see `cookie.secure: "auto"` in `backend/src/server.ts`. Fixed as
+of this writing; if you're on an older image, pull `latest` again.
+
 The "Connect to Message VPN" screen deliberately shows a short, specific
 error (e.g. "Could not connect: SEMP request failed (network): ...") rather
 than a generic one, and the same detail plus the broker URL/VPN/username

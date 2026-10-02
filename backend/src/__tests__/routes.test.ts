@@ -72,6 +72,30 @@ describe("POST /api/login (workshop mode)", () => {
   });
 });
 
+describe("session cookie security (cookie.secure: 'auto')", () => {
+  // Regression test for a real bug: a hardcoded `secure: true` (based only
+  // on NODE_ENV=production, which the Docker image always sets) made the
+  // browser silently drop the session cookie for anyone running the
+  // container directly over plain HTTP (the documented "docker run
+  // -p 4000:4000 ..." quickstart, no reverse proxy) - the broker "connect"
+  // POST would succeed, but every following request got a brand new empty
+  // session, so GET /api/endpoints always 400ed with "Not connected to a
+  // broker" right after a successful connect. `secure: "auto"` fixes this
+  // by deciding Secure from the ACTUAL request (req.secure, which honors
+  // "trust proxy" + X-Forwarded-Proto) instead of NODE_ENV.
+  it("does not mark the session cookie Secure for a plain HTTP request", async () => {
+    const res = await request(app).get("/api/session");
+    const setCookie = res.headers["set-cookie"]?.[0] ?? "";
+    expect(setCookie).not.toMatch(/secure/i);
+  });
+
+  it("marks the session cookie Secure when a TLS-terminating reverse proxy reports https", async () => {
+    const res = await request(app).get("/api/session").set("X-Forwarded-Proto", "https");
+    const setCookie = res.headers["set-cookie"]?.[0] ?? "";
+    expect(setCookie).toMatch(/secure/i);
+  });
+});
+
 describe("connection + endpoints + sankey-edges (full flow on one session)", () => {
   it("400s on /api/endpoints before any broker is connected", async () => {
     const agent = request.agent(app);
