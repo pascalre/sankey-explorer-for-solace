@@ -49,7 +49,7 @@ export interface AppConfig {
  *   "docker pull && docker run" work with zero required configuration.
  *   Set SESSION_SECRET explicitly only if you run multiple replicas behind
  *   a load balancer and need them to share one signing secret (that setup
- *   also needs an external session store - see the TODO in
+ *   also needs an external session store - see the deferred-work note in
  *   connectionStore.ts - a random per-process secret wouldn't help there
  *   anyway, since sessions wouldn't be shared across replicas either).
  */

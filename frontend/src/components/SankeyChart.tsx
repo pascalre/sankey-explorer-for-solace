@@ -227,7 +227,7 @@ export function SankeyChart({
       <div className="sankey-toolbar">
         <div className="toolbar-group">
           <label className="toolbar-control">
-            View
+            <span>View</span>
             <select
               value={viewMode}
               onChange={(e) => setViewMode(e.target.value as DiagramViewMode)}
@@ -244,7 +244,7 @@ export function SankeyChart({
               onChange={(e) => setShowDirectSubscribers(e.target.checked)}
             />
             <span className="toolbar-toggle-track" aria-hidden="true" />
-            Show direct subscribers
+            <span>Show direct subscribers</span>
           </label>
         </div>
         {/* Divider + "Sort by" grouped into one flex item, so flex-wrap on
@@ -254,7 +254,7 @@ export function SankeyChart({
         <div className="toolbar-group">
           <div className="toolbar-divider" aria-hidden="true" />
           <label className="toolbar-control">
-            Sort by
+            <span>Sort by</span>
             <select
               value={sortMode}
               onChange={(e) => setSortMode(e.target.value as SortMode)}

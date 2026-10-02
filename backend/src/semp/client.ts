@@ -35,12 +35,25 @@ export class SempV2Client {
 
   private authHeader(): string {
     const { username, password } = this.options;
-    return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+    const credentials = `${username}:${password}`;
+    return `Basic ${Buffer.from(credentials).toString("base64")}`;
   }
 
-  /** The broker's SEMP v2 Monitor API root, with any trailing slash trimmed. */
+  /**
+   * The broker's SEMP v2 Monitor API root, with any trailing slash(es)
+   * trimmed. Deliberately a plain loop rather than a `/\/+$/` regex - a
+   * repeated-character-class-anchored-at-end pattern like that is exactly
+   * the shape static analyzers flag as super-linear/backtracking-prone on
+   * general principle (even though this particular one is safe), and a
+   * user-supplied broker URL is untrusted input - simplest to just not
+   * have a regex here at all.
+   */
   private monitorBase(): string {
-    return `${this.options.baseUrl.replace(/\/+$/, "")}/SEMP/v2/monitor`;
+    let base = this.options.baseUrl;
+    while (base.endsWith("/")) {
+      base = base.slice(0, -1);
+    }
+    return `${base}/SEMP/v2/monitor`;
   }
 
   private async getJson<T>(url: string): Promise<T> {
@@ -70,18 +83,22 @@ export class SempV2Client {
    * Fetches every page of a SEMP v2 collection endpoint (following
    * `meta.paging.nextPageUri` until it's no longer present) and returns the
    * combined `data` from every page.
+   *
+   * Recursive rather than a `while` loop with an `await` in its body - not
+   * just style: pagination is genuinely sequential (the next page's URL
+   * isn't known until the current page's response arrives, so there's
+   * nothing to parallelize here), but a loop-shaped `await` can't express
+   * that it's intentional vs. accidentally-sequential code that should
+   * have used `Promise.all`. Async recursion doesn't grow the call stack
+   * across an `await` the way synchronous recursion would (each
+   * continuation resumes as its own microtask), so this is just as safe
+   * for a broker with many pages as the loop version was.
    */
   private async getCollection<T>(url: string): Promise<T[]> {
-    const items: T[] = [];
-    let nextUrl: string | undefined = url;
-
-    while (nextUrl) {
-      const page: SempV2Page<T> = await this.getJson<SempV2Page<T>>(nextUrl);
-      items.push(...page.data);
-      nextUrl = page.meta?.paging?.nextPageUri;
-    }
-
-    return items;
+    const page = await this.getJson<SempV2Page<T>>(url);
+    const nextUrl = page.meta?.paging?.nextPageUri;
+    if (!nextUrl) return page.data;
+    return [...page.data, ...(await this.getCollection<T>(nextUrl))];
   }
 
   /**

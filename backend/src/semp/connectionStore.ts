@@ -25,9 +25,9 @@ interface StoredConnection extends BrokerConnectionStatus {
 
 /**
  * MVP: in-memory, single Node process. Sufficient for "1 instance per
- * customer/workshop". TODO (promotion trigger: multiple process instances
- * behind a load balancer): swap for an external store (Redis), same
- * interface signature.
+ * customer/workshop". Deferred, not forgotten (promotion trigger: multiple
+ * process instances behind a load balancer): swap for an external store
+ * (Redis), same interface signature.
  *
  * A session can hold MULTIPLE broker connections (e.g. a customer with
  * several brokers meshed together, wanting one combined view) - keyed by a

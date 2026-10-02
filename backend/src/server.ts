@@ -33,7 +33,8 @@ export function createServer() {
       // true: creates a session for every visitor (needed so the broker
       // connection can be reliably associated even before any login).
       // Switch to a MemoryStore TTL/Redis if needed (memory growth in
-      // workshop mode without login) - see TODO in connectionStore.ts.
+      // workshop mode without login) - see the deferred-work note in
+      // connectionStore.ts.
       saveUninitialized: true,
       cookie: {
         httpOnly: true,

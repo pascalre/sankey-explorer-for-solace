@@ -195,10 +195,9 @@ export function ConnectScreen({
               {" "}Pre-filled with <code>host.docker.internal</code> since
               that's what reaches a broker on your own machine from inside
               this app's own Docker container (the quickstart way of
-              running it) - running this app locally instead (
-              <code>npm run dev</code>), or a broker on a different
-              host entirely? Change it to <code>localhost</code> or the
-              broker's real address.
+              running it) - running this app locally instead (<code>npm run dev</code>),
+              or a broker on a different host entirely? Change it to{" "}
+              <code>localhost</code> or the broker's real address.
             </p>
           )}
           <label>
