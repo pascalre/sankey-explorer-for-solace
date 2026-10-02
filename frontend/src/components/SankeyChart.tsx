@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { sankeyLinkHorizontal } from "d3-sankey";
 import { computeSankeyLayout, type SortMode } from "../lib/sankeyLayout";
 import { explodeTopicHierarchy } from "../lib/explodeTopicHierarchy";
+import { addWildcardCoverageEdges } from "../lib/addWildcardCoverageEdges";
 import { nodeDisplayLabel } from "../lib/nodeDisplayLabel";
 import { endpointDisplayName } from "../lib/endpointDisplayName";
 import { filterToRelevantSubgraph } from "../lib/filterToRelevantSubgraph";
@@ -44,6 +45,17 @@ function edgeKey(source: string, target: string): string {
 
 const linkPath = sankeyLinkHorizontal();
 
+/**
+ * - "dataflow": the default. Includes implied wildcard-coverage edges (see
+ *   addWildcardCoverageEdges) - a broader wildcard subscription shows up
+ *   as also reaching a more specific topic subscribed elsewhere, since
+ *   that's what the broker actually delivers.
+ * - "subscriptions": literal mode. Only what's actually, individually
+ *   declared on each endpoint - no wildcard-coverage edges at all, so the
+ *   diagram matches the broker's raw subscription list 1:1.
+ */
+export type DiagramViewMode = "dataflow" | "subscriptions";
+
 export function SankeyChart({
   edges,
   endpointOwners,
@@ -61,6 +73,7 @@ export function SankeyChart({
   // leads into are always exactly the same, by construction.
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("crossing");
+  const [viewMode, setViewMode] = useState<DiagramViewMode>("dataflow");
 
   useEffect(() => {
     const el = containerRef.current;
@@ -73,13 +86,30 @@ export function SankeyChart({
     return () => observer.disconnect();
   }, []);
 
-  // New data (reconnect/refresh) -> a selection on a node that may no
-  // longer exist doesn't make sense anymore.
+  // New data (reconnect/refresh), or switching view mode - a selection on
+  // a node that may no longer exist in the new edge set doesn't make sense
+  // anymore (e.g. a node only reachable via an implied wildcard edge
+  // disappears when switching from "dataflow" to "subscriptions").
   useEffect(() => {
     setSelectedNodeId(null);
-  }, [edges]);
+  }, [edges, viewMode]);
 
-  const explodedEdges = useMemo(() => explodeTopicHierarchy(edges), [edges]);
+  // Wildcard subscriptions (e.g. "acme/sales/>") implicitly also receive
+  // everything a more specific subscription on a DIFFERENT endpoint (e.g.
+  // "acme/sales/orders") receives - even though those are separate
+  // subscription strings the broker never explicitly links. This has to
+  // run BEFORE exploding into the per-segment hierarchy, since it compares
+  // full subscription strings against each other. Only applied in
+  // "dataflow" mode - "subscriptions" mode shows the broker's raw,
+  // per-endpoint subscription list with no wildcard-coverage edges added.
+  const edgesWithWildcardCoverage = useMemo(
+    () => (viewMode === "dataflow" ? addWildcardCoverageEdges(edges) : edges),
+    [edges, viewMode],
+  );
+  const explodedEdges = useMemo(
+    () => explodeTopicHierarchy(edgesWithWildcardCoverage),
+    [edgesWithWildcardCoverage],
+  );
 
   const displayEdges = useMemo(() => {
     if (!selectedNodeId) return explodedEdges;
@@ -172,6 +202,16 @@ export function SankeyChart({
   return (
     <div ref={containerRef} className="sankey-container">
       <div className="sankey-toolbar">
+        <label className="sankey-sort-control">
+          View
+          <select
+            value={viewMode}
+            onChange={(e) => setViewMode(e.target.value as DiagramViewMode)}
+          >
+            <option value="dataflow">Data flow (wildcard-aware)</option>
+            <option value="subscriptions">Subscriptions (literal)</option>
+          </select>
+        </label>
         <label className="sankey-sort-control">
           Sort by
           <select

@@ -126,6 +126,80 @@ describe("SankeyChart - click to filter", () => {
   });
 });
 
+describe("SankeyChart - wildcard subscription coverage", () => {
+  it("shows a broader wildcard subscriber when filtering down to a more specific, separately-subscribed topic", async () => {
+    const edges: SankeyEdge[] = [
+      { source: "acme/sales/>", target: "Queue: all-sales-q", value: 1 },
+      { source: "acme/sales/orders", target: "Topic Endpoint: te-orders", value: 1 },
+    ];
+    const user = userEvent.setup();
+    render(<SankeyChart edges={edges} />);
+
+    // Before filtering, both endpoints are already visible (the fan-out
+    // from "acme/sales/orders" now includes the queue too, on top of its
+    // own directly-subscribed topic-endpoint).
+    expect(screen.getByText("all-sales-q")).toBeInTheDocument();
+    expect(screen.getByText("te-orders")).toBeInTheDocument();
+
+    await user.click(screen.getByText("orders"));
+
+    // Filtering down to the specific topic must still show the queue that
+    // only reaches it via its broader "acme/sales/>" wildcard - that's the
+    // whole point of the fix.
+    expect(screen.getByText("all-sales-q")).toBeInTheDocument();
+    expect(screen.getByText("te-orders")).toBeInTheDocument();
+  });
+});
+
+describe("SankeyChart - view mode toggle", () => {
+  const wildcardEdges: SankeyEdge[] = [
+    { source: "acme/sales/>", target: "Queue: all-sales-q", value: 1 },
+    { source: "acme/sales/orders", target: "Topic Endpoint: te-orders", value: 1 },
+  ];
+
+  it("offers both view modes, defaulting to 'Data flow'", () => {
+    render(<SankeyChart edges={wildcardEdges} />);
+    const select = screen.getByLabelText("View") as HTMLSelectElement;
+    const optionLabels = Array.from(select.options).map((o) => o.textContent);
+    expect(optionLabels).toEqual(["Data flow (wildcard-aware)", "Subscriptions (literal)"]);
+    expect(select.value).toBe("dataflow");
+  });
+
+  it("'Data flow' mode (default) shows the implied wildcard-covered endpoint even without filtering", () => {
+    render(<SankeyChart edges={wildcardEdges} />);
+    expect(screen.getByText("all-sales-q")).toBeInTheDocument();
+    expect(screen.getByText("te-orders")).toBeInTheDocument();
+  });
+
+  it("switching to 'Subscriptions' mode shows only the literal, declared subscriptions - no implied wildcard coverage", async () => {
+    const user = userEvent.setup();
+    render(<SankeyChart edges={wildcardEdges} />);
+
+    await user.selectOptions(screen.getByLabelText("View"), "Subscriptions (literal)");
+
+    // Both endpoints still exist (each has its own real subscription)...
+    expect(screen.getByText("all-sales-q")).toBeInTheDocument();
+    expect(screen.getByText("te-orders")).toBeInTheDocument();
+    // ...but the ">" wildcard segment node (acme/sales/>) must no longer
+    // fan out to the "orders" topic node's queue - i.e. clicking "orders"
+    // in literal mode must NOT reveal the queue reached only via wildcard.
+    await user.click(screen.getByText("orders"));
+    expect(screen.queryByText("all-sales-q")).not.toBeInTheDocument();
+    expect(screen.getByText("te-orders")).toBeInTheDocument();
+  });
+
+  it("switching view mode resets any active node selection", async () => {
+    const user = userEvent.setup();
+    render(<SankeyChart edges={wildcardEdges} />);
+
+    await user.click(screen.getByText("orders"));
+    expect(await screen.findByRole("button", { name: "Back to overview" })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("View"), "Subscriptions (literal)");
+    expect(screen.queryByRole("button", { name: "Back to overview" })).not.toBeInTheDocument();
+  });
+});
+
 describe("SankeyChart - svg structure", () => {
   it("renders an accessible svg with the expected aria-label", () => {
     render(<SankeyChart edges={basicEdges} />);

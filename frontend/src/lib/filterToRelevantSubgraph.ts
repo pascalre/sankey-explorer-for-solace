@@ -9,6 +9,15 @@ function buildAdjacency(edges: SankeyEdge[]): {
   for (const edge of edges) {
     if (!outgoing.has(edge.source)) outgoing.set(edge.source, []);
     outgoing.get(edge.source)!.push(edge.target);
+
+    // Ancestors ("what is this node actually reached from") must only ever
+    // be real subscriptions. An implied wildcard-coverage edge (see
+    // addWildcardCoverageEdges) must not make it look like a queue
+    // literally subscribed to a topic it never declared - clicking the
+    // queue should show its real subscriptions only. Implied edges still
+    // count as outgoing above, so clicking the covered topic itself still
+    // shows the queue that reaches it via the wildcard.
+    if (edge.implied) continue;
     if (!incoming.has(edge.target)) incoming.set(edge.target, []);
     incoming.get(edge.target)!.push(edge.source);
   }

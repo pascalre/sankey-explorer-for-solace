@@ -236,9 +236,12 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
       expect.arrayContaining([
         { source: "orders/created", target: "Queue: orders-q", value: 1 },
         { source: "orders/>", target: "Direct Subscriber: my-app-1", value: 1 },
+        // Implied: the direct subscriber's "orders/>" wildcard also
+        // covers the queue's separate, more specific "orders/created".
+        { source: "orders/created", target: "Direct Subscriber: my-app-1", value: 1 },
       ]),
     );
-    expect(sankeyRes.body).toHaveLength(2);
+    expect(sankeyRes.body).toHaveLength(3);
 
     const removeRes = await agent.delete(`/api/connection/${connectionId}`);
     expect(removeRes.body).toEqual([]);

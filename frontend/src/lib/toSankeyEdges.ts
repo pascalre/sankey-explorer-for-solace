@@ -4,6 +4,16 @@ export interface SankeyEdge {
   source: string;
   target: string;
   value: number;
+  /**
+   * True if this edge is not a literal subscription but implied by Solace
+   * wildcard coverage (see addWildcardCoverageEdges) - e.g. linking
+   * "acme/sales/orders" to a queue that only actually declared
+   * "acme/sales/>". filterToRelevantSubgraph uses this to keep "what is
+   * this queue really subscribed to" (ancestor view) limited to real
+   * subscriptions, while "what reaches this topic" (descendant view) still
+   * includes implied coverage.
+   */
+  implied?: boolean;
 }
 
 /** True once 2+ distinct brokers appear in the dataset - see endpointLabel. */

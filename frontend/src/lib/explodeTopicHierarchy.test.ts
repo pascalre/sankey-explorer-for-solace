@@ -64,4 +64,25 @@ describe("explodeTopicHierarchy", () => {
       { source: "a/b", target: "Queue: X", value: 3 },
     ]);
   });
+
+  it("carries the `implied` flag through onto only the final hop, leaving intermediate hierarchy hops real", () => {
+    const edges: SankeyEdge[] = [
+      { source: "acme/sales/orders", target: "Queue: all-sales-q", value: 1, implied: true },
+    ];
+
+    const result = explodeTopicHierarchy(edges);
+
+    expect(result).toContainEqual({ source: "acme", target: "acme/sales", value: 1 });
+    expect(result).toContainEqual({
+      source: "acme/sales",
+      target: "acme/sales/orders",
+      value: 1,
+    });
+    expect(result).toContainEqual({
+      source: "acme/sales/orders",
+      target: "Queue: all-sales-q",
+      value: 1,
+      implied: true,
+    });
+  });
 });

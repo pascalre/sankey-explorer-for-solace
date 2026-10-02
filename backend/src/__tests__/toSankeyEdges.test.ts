@@ -141,4 +141,36 @@ describe("toSankeyEdges", () => {
     );
     expect(edges).toHaveLength(2);
   });
+
+  it("adds an implied edge for a queue whose wildcard subscription also covers a different endpoint's more specific topic", () => {
+    const endpoints: EndpointInfo[] = [
+      {
+        type: "queue",
+        name: "all-sales-q",
+        vpn: "default",
+        subscriptions: ["acme/sales/>"],
+        brokerLabel: "default",
+        brokerHost: "localhost:8080",
+      },
+      {
+        type: "topic-endpoint",
+        name: "te-orders",
+        vpn: "default",
+        subscriptions: ["acme/sales/orders"],
+        brokerLabel: "default",
+        brokerHost: "localhost:8080",
+      },
+    ];
+
+    const edges = toSankeyEdges(endpoints);
+
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        { source: "acme/sales/>", target: "Queue: all-sales-q", value: 1 },
+        { source: "acme/sales/orders", target: "Topic Endpoint: te-orders", value: 1 },
+        { source: "acme/sales/orders", target: "Queue: all-sales-q", value: 1 },
+      ]),
+    );
+    expect(edges).toHaveLength(3);
+  });
 });

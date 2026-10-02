@@ -65,6 +65,26 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 - Topic subscriptions are split along `/` into a hierarchy of prefix nodes
   in the diagram (e.g. `acme/sales/orders/>` becomes a chain of nodes).
   Sort order is switchable (topic name / endpoint name / owner).
+- **Wildcard subscriptions are shown as covering more specific topics
+  elsewhere.** A subscription like `acme/sales/>` on one endpoint and
+  `acme/sales/orders` on a completely different endpoint end up as two
+  separate node chains in the hierarchy - but by Solace's own topic-matching
+  rules, the `>` wildcard means that endpoint also receives every message
+  the more specific subscription does. Clicking `acme/sales/orders` in the
+  diagram now also shows the endpoint subscribed via the broader wildcard,
+  not just the endpoint with the exact string. Implemented in
+  `frontend/src/lib/subscriptionCovers.ts` +
+  `addWildcardCoverageEdges.ts` (and mirrored in `backend/src/semp/` for the
+  `/api/sankey-edges` Grafana path, so both stay consistent). This only
+  affects what a *topic* click reveals - clicking the endpoint itself
+  (e.g. the queue) still shows only its real, declared subscriptions, not
+  every topic that happens to reach it via someone else's wildcard (see the
+  `implied` edge flag in `frontend/src/lib/filterToRelevantSubgraph.ts`).
+  **This whole behavior is optional** - the "View" control in the diagram
+  toolbar switches between "Data flow (wildcard-aware)" (the above, default)
+  and "Subscriptions (literal)", which shows only each endpoint's raw,
+  individually declared subscriptions with no wildcard-coverage edges added
+  at all.
 - Click any node OR the connecting link to filter down to only the
   relevant subtree: clicking/hovering a queue shows just its
   subscriptions, a topic shows just the queues/topic-endpoints it

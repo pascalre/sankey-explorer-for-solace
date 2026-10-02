@@ -73,6 +73,48 @@ describe("filterToRelevantSubgraph", () => {
   });
 });
 
+describe("filterToRelevantSubgraph - implied wildcard-coverage edges", () => {
+  const wildcardEdges: SankeyEdge[] = [
+    // Queue "all-sales-q" really only declared "acme/sales/>".
+    { source: "acme/sales", target: "acme/sales/>", value: 1 },
+    { source: "acme/sales/>", target: "Queue: all-sales-q", value: 1 },
+    // Topic endpoint "te-orders" really declared "acme/sales/orders".
+    { source: "acme/sales", target: "acme/sales/orders", value: 1 },
+    { source: "acme/sales/orders", target: "Topic Endpoint: te-orders", value: 1 },
+    // Implied: the wildcard above also covers this more specific topic.
+    { source: "acme/sales/orders", target: "Queue: all-sales-q", value: 1, implied: true },
+  ];
+
+  it("clicking the queue shows only its real subscription, not the implied one", () => {
+    const result = filterToRelevantSubgraph(wildcardEdges, "Queue: all-sales-q");
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { source: "acme/sales", target: "acme/sales/>", value: 1 },
+        { source: "acme/sales/>", target: "Queue: all-sales-q", value: 1 },
+      ]),
+    );
+    expect(result).toHaveLength(2);
+    expect(result.some((e) => e.source === "acme/sales/orders")).toBe(false);
+  });
+
+  it("clicking the more specific topic still shows the endpoint that reaches it only via a broader wildcard", () => {
+    const result = filterToRelevantSubgraph(wildcardEdges, "acme/sales/orders");
+
+    expect(result).toContainEqual({
+      source: "acme/sales/orders",
+      target: "Topic Endpoint: te-orders",
+      value: 1,
+    });
+    expect(result).toContainEqual({
+      source: "acme/sales/orders",
+      target: "Queue: all-sales-q",
+      value: 1,
+      implied: true,
+    });
+  });
+});
+
 describe("filterToRelevantSubgraph as the anchor for edge hover/click", () => {
   it("calling it with a link's TARGET gives the exact same result as clicking/hovering that link directly would need", () => {
     // A link between "acme/sales" and "acme/sales/orders" should highlight/

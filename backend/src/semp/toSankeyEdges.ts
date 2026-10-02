@@ -1,4 +1,5 @@
 import type { EndpointInfo } from "./types.js";
+import { addWildcardCoverageEdges } from "./addWildcardCoverageEdges.js";
 
 export interface SankeyEdge {
   source: string;
@@ -33,6 +34,13 @@ export function endpointLabel(
  * One edge per (topic, endpoint) pair. If an endpoint has the same topic
  * subscription listed twice (not really expected broker-side), duplicates
  * get merged into one edge with value>1 instead of separate value-1 edges.
+ *
+ * Also adds the wildcard-coverage edges addWildcardCoverageEdges()
+ * computes (e.g. a queue subscribed to "acme/sales/>" implicitly also
+ * receives whatever reaches a separate "acme/sales/orders" subscription
+ * elsewhere) - without this, a Grafana Sankey panel built on this data
+ * would silently miss that connection, same as the SPA's own diagram did
+ * before that fix.
  */
 export function toSankeyEdges(endpoints: EndpointInfo[]): SankeyEdge[] {
   const counts = new Map<string, SankeyEdge>();
@@ -51,5 +59,5 @@ export function toSankeyEdges(endpoints: EndpointInfo[]): SankeyEdge[] {
     }
   }
 
-  return [...counts.values()];
+  return addWildcardCoverageEdges([...counts.values()]);
 }
