@@ -26,7 +26,14 @@ export function ConnectScreen({
   onBrokerConfigsChanged,
   onDone,
 }: ConnectScreenProps) {
-  const [baseUrl, setBaseUrl] = useState("http://localhost:8080");
+  // Defaults to host.docker.internal rather than localhost because the
+  // overwhelmingly common case is running THIS app itself via the Docker
+  // quickstart (see README) - inside that container, "localhost" is the
+  // container itself, not the host a locally-running broker's management
+  // port is published on. See the hint text below the input for when to
+  // override this (local non-Docker dev, or a broker that's neither on
+  // the host nor reachable via host.docker.internal).
+  const [baseUrl, setBaseUrl] = useState("http://host.docker.internal:8080");
   const [vpn, setVpn] = useState("default");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -185,6 +192,13 @@ export function ConnectScreen({
               Connecting to several message VPNs (maybe across multiple
               brokers)? Add each one here - they'll all show up combined in
               the diagram, color-coded by message VPN.
+              {" "}Pre-filled with <code>host.docker.internal</code> since
+              that's what reaches a broker on your own machine from inside
+              this app's own Docker container (the quickstart way of
+              running it) - running this app locally instead (
+              <code>npm run dev</code>), or a broker on a different
+              host entirely? Change it to <code>localhost</code> or the
+              broker's real address.
             </p>
           )}
           <label>

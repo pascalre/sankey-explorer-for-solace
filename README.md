@@ -100,7 +100,8 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 
 ```bash
 docker pull ghcr.io/pascalre/sankey-explorer-for-solace:latest
-docker run -p 4000:4000 ghcr.io/pascalre/sankey-explorer-for-solace:latest
+docker run -p 4000:4000 --add-host=host.docker.internal:host-gateway \
+  ghcr.io/pascalre/sankey-explorer-for-solace:latest
 ```
 
 Then open http://localhost:4000. No required configuration at all - no env
@@ -108,7 +109,15 @@ vars, no `.env` file. `SESSION_SECRET` is optional (see "Zero required
 config" below); leave `APP_USERNAME`/`APP_PASSWORD_HASH` unset too and the
 tool runs in "workshop mode" with no login (see "Deployment model" above).
 Broker URL/VPN/credentials are entered afterwards, in the browser, on the
-"Connect to Message VPN" screen.
+"Connect to Message VPN" screen - pre-filled with
+`http://host.docker.internal:8080`, which reaches a broker running on (or
+port-published to) the same machine this container runs on.
+
+The `--add-host` flag is there for Linux: Docker Desktop (Mac/Windows)
+already resolves `host.docker.internal` inside any container without it,
+but plain Docker Engine on Linux only does so with this flag (Engine
+20.10+). Harmless to include everywhere, so it's in the command above
+unconditionally rather than documented as a Linux-only special case.
 
 The image is built and published automatically by
 `.github/workflows/docker-publish.yml` on every push to `master` (and on
@@ -162,9 +171,12 @@ them, including the optional login and a custom port, if you want either).
 
 Open the frontend in dev mode, enter the broker's SEMP host/VPN/credentials
 in the "Connect" screen (just the host, e.g. `http://localhost:8080` - no
-`/SEMP` path needed, the backend adds `/SEMP/v2/monitor/...` itself). No
-broker handy? Rebuild the mock from the smoke test (see
-`backend/src/__tests__` for the assumed reply structure).
+`/SEMP` path needed, the backend adds `/SEMP/v2/monitor/...` itself). The
+field pre-fills `host.docker.internal` for the Docker quickstart case (see
+"Troubleshooting" below) - running locally like this, nothing is in a
+container, so change it back to `localhost` (or the broker's real host) if
+it's not already. No broker handy? Rebuild the mock from the smoke test
+(see `backend/src/__tests__` for the assumed reply structure).
 
 ### Demo data (for screenshots)
 
@@ -185,11 +197,17 @@ through SEMP, since it only exists while a client is actually connected).
 
 ## Troubleshooting a broker connection
 
-**Running the app itself in Docker and the broker is also in a container?**
-`localhost` inside the app's container is the container itself, not your
-host - it won't reach a broker whose port is published on your host. Use
-`http://host.docker.internal:8080` as the SEMP host instead (Docker
-Desktop resolves that to the host automatically).
+**Running the app itself in Docker (the quickstart above) and the broker
+is on your machine too (bare-metal or its own container)?** This is
+exactly why the "Connect" screen pre-fills `host.docker.internal` rather
+than `localhost`: inside the app's own container, `localhost` is the
+container itself, not your host, so it won't reach a broker whose port is
+published on your host. If that field ever ends up set to `localhost`
+(e.g. you changed it, or are on an older build) and nothing connects,
+switch it to `http://host.docker.internal:8080`. On Linux this additionally
+needs `--add-host=host.docker.internal:host-gateway` on the `docker run`
+command (already in the quickstart above) - Docker Desktop (Mac/Windows)
+resolves it automatically either way.
 
 **"Connect" succeeds but the diagram screen immediately says "Not connected
 to a broker"?** That's the session cookie not making it back to the
