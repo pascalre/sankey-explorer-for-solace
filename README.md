@@ -112,10 +112,15 @@ Broker URL/VPN/credentials are entered afterwards, in the browser, on the
 
 The image is built and published automatically by
 `.github/workflows/docker-publish.yml` on every push to `master` (and on
-version tags). One-time setup after the first run: GitHub makes a new
-package PRIVATE by default even in a public repo - go to your GitHub
-profile → Packages → this image → Package settings → Change visibility →
-Public, so others can pull it without authenticating.
+version tags), for both `linux/amd64` and `linux/arm64` (e.g. Apple
+Silicon).
+
+If `docker pull` ever fails with `denied` even though the package looks
+public: that's almost always a stale/expired `docker login ghcr.io` cached
+on the machine doing the pull, not a visibility problem - `docker logout
+ghcr.io` fixes it. Only if the package itself was genuinely created private
+(depends on repo/org defaults) do you need the one-time fix: GitHub profile
+→ Packages → this image → Package settings → Change visibility → Public.
 
 ### Zero required config
 
@@ -160,6 +165,23 @@ in the "Connect" screen (just the host, e.g. `http://localhost:8080` - no
 `/SEMP` path needed, the backend adds `/SEMP/v2/monitor/...` itself). No
 broker handy? Rebuild the mock from the smoke test (see
 `backend/src/__tests__` for the assumed reply structure).
+
+### Demo data (for screenshots)
+
+`scripts/seed-demo-broker.sh` provisions a small retail-domain example
+(queues, topic subscriptions, a wildcard) on a local broker via the SEMP v2
+CONFIG API, so there's something worth looking at without a real customer
+broker handy:
+
+```bash
+BROKER_HOST=http://localhost:8080 VPN=default ADMIN_USER=admin ADMIN_PASSWORD=admin \
+  ./scripts/seed-demo-broker.sh
+```
+
+Defaults match a stock Solace PubSub+ Standard eval Docker image. Safe to
+re-run. See the script's own comments for how to add a "Direct Subscriber"
+node too (via "Try Me!" in PubSub+ Manager - that one can't be provisioned
+through SEMP, since it only exists while a client is actually connected).
 
 ## Troubleshooting a broker connection
 

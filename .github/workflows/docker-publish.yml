@@ -7,10 +7,16 @@ name: Build and publish Docker image
 # No Docker Hub account/secret needed - GITHUB_TOKEN (ambient, no setup) is
 # enough to push to ghcr.io for this repository.
 #
-# ONE-TIME MANUAL STEP after the first successful run: the package ghcr.io
-# creates is PRIVATE by default, even in a public repo. Go to your GitHub
-# profile -> Packages -> this image -> Package settings -> Change visibility
-# -> Public, so others can pull it without authenticating.
+# If `docker pull` ever comes back "denied" even though the package looks
+# public: that's almost always a stale/expired cached ghcr.io login on the
+# PULLING machine (`docker login ghcr.io` once, then the token expired) -
+# `docker logout ghcr.io` fixes it. If the package itself ever gets created
+# PRIVATE (can happen depending on repo/org defaults): GitHub profile ->
+# Packages -> this image -> Package settings -> Change visibility -> Public.
+#
+# Builds for both linux/amd64 and linux/arm64 (e.g. Apple Silicon) via QEMU
+# emulation - arm64 takes noticeably longer to build than amd64 because of
+# that emulation, this is expected.
 
 on:
   push:
@@ -54,6 +60,9 @@ jobs:
             type=ref,event=tag
             type=sha,format=short
 
+      - name: Set up QEMU (for cross-building the linux/arm64 image)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -62,6 +71,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
