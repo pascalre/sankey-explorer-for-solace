@@ -63,7 +63,7 @@ describe("requireBrokerConnection", () => {
   it("calls next() when at least one broker is connected for this session", () => {
     const sessionId = `mw-test-${Math.random()}`;
     addBrokerConnection(sessionId, {
-      baseUrl: "http://localhost:8080/SEMP",
+      baseUrl: "http://localhost:8080",
       vpn: "default",
       username: "ro",
       password: "x",

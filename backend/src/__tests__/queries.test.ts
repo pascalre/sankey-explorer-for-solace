@@ -1,51 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
-import { parser } from "../semp/client.js";
 import {
   fetchAllEndpoints,
+  fetchDirectSubscribers,
   fetchEndpointsAcrossConnections,
-  parseClientPages,
-  parseQueuePages,
-  parseTopicEndpointPages,
+  fetchQueues,
+  fetchTopicEndpoints,
 } from "../semp/queries.js";
-import type { SempV1Client } from "../semp/client.js";
+import type { SempV2Client } from "../semp/client.js";
 import type { FetchableBrokerConnection } from "../semp/queries.js";
 
-function parseReplyBody(xml: string): Record<string, unknown> {
-  const fullXml = `<rpc-reply semp-version="soltr/10_8_1"><rpc>${xml}</rpc><execute-result code="ok"/></rpc-reply>`;
-  const parsed = parser.parse(fullXml);
-  return parsed["rpc-reply"] as Record<string, unknown>;
-}
-
 /**
- * A test double for SempV1Client that just captures the request-building
- * function fetchAllEndpoints passes to sendPagedRpc, so we can inspect the
- * actual XML it would send - including whether the vpn name gets properly
- * escaped - without needing a real broker or exporting the private request
- * builders from queries.ts.
+ * A test double for SempV2Client that resolves `getVpnCollection(vpn, path)`
+ * from a lookup table keyed by `path` - lets each test describe exactly
+ * what each REST call should return without needing a real broker.
  */
-function fakeClientCapturingRequests() {
-  const capturedBuilders: Array<(cookie: string | null) => string> = [];
+function fakeClient(responses: Record<string, unknown[]>): {
+  client: SempV2Client;
+  calls: Array<{ vpn: string; path: string }>;
+} {
+  const calls: Array<{ vpn: string; path: string }> = [];
   const client = {
-    sendPagedRpc: vi.fn((builder: (cookie: string | null) => string) => {
-      capturedBuilders.push(builder);
-      return Promise.resolve([]);
+    getVpnCollection: vi.fn((vpn: string, path: string) => {
+      calls.push({ vpn, path });
+      return Promise.resolve(responses[path] ?? []);
     }),
-  } as unknown as SempV1Client;
-  return { client, capturedBuilders };
+  } as unknown as SempV2Client;
+  return { client, calls };
 }
 
-describe("parseQueuePages", () => {
-  it("extracts queue name and subscribed topics", () => {
-    const xml = `<show><queue><queues><queue>
-      <name>orders-q</name>
-      <subscriptions>
-        <subscription><topic>orders/created</topic></subscription>
-        <subscription><topic>orders/cancelled</topic></subscription>
-      </subscriptions>
-    </queue></queues></queue></show>`;
+describe("fetchQueues", () => {
+  it("fetches the queue list, then each queue's own subscriptions, and merges them", async () => {
+    const { client } = fakeClient({
+      "/queues": [
+        { queueName: "orders-q", owner: "app-svc-orders" },
+        { queueName: "empty-q" },
+      ],
+      "/queues/orders-q/subscriptions": [
+        { subscriptionTopic: "orders/created" },
+        { subscriptionTopic: "orders/cancelled" },
+      ],
+      "/queues/empty-q/subscriptions": [],
+    });
 
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseQueuePages([reply], "default");
+    const result = await fetchQueues(client, "default");
 
     expect(result).toEqual([
       {
@@ -53,103 +50,37 @@ describe("parseQueuePages", () => {
         name: "orders-q",
         vpn: "default",
         subscriptions: ["orders/created", "orders/cancelled"],
+        owner: "app-svc-orders",
+      },
+      {
+        type: "queue",
+        name: "empty-q",
+        vpn: "default",
+        subscriptions: [],
+        owner: undefined,
       },
     ]);
   });
 
-  it("returns an empty subscriptions array when a queue has no subscriptions", () => {
-    const xml = `<show><queue><queues><queue>
-      <name>empty-q</name>
-    </queue></queues></queue></show>`;
+  it("URL-encodes a queue name that needs it when fetching its subscriptions", async () => {
+    const { client, calls } = fakeClient({
+      "/queues": [{ queueName: "a queue/weird" }],
+    });
 
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseQueuePages([reply], "default");
+    await fetchQueues(client, "default");
 
-    expect(result).toEqual([
-      { type: "queue", name: "empty-q", vpn: "default", subscriptions: [] },
-    ]);
-  });
-
-  it("handles a single queue without treating it as multiple entries", () => {
-    // Regression: fast-xml-parser returns an object for exactly 1 child
-    // node instead of an array, unless you force it via isArray() in the parser config.
-    const xml = `<show><queue><queues><queue>
-      <name>only-one-q</name>
-    </queue></queues></queue></show>`;
-
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseQueuePages([reply], "default");
-
-    expect(result).toHaveLength(1);
-    expect(result[0]?.name).toBe("only-one-q");
-  });
-
-  it("merges multiple pages (paging) into one flat list", () => {
-    const page1 = parseReplyBody(
-      `<show><queue><queues><queue><name>q1</name></queue></queues></queue></show>`,
-    ) as unknown as Record<string, unknown>;
-    const page2 = parseReplyBody(
-      `<show><queue><queues><queue><name>q2</name></queue></queues></queue></show>`,
-    ) as unknown as Record<string, unknown>;
-
-    const result = parseQueuePages([page1, page2], "default");
-
-    expect(result.map((e) => e.name)).toEqual(["q1", "q2"]);
-  });
-
-  it("extracts the owner when present", () => {
-    const xml = `<show><queue><queues><queue>
-      <name>orders-q</name>
-      <owner>app-svc-orders</owner>
-    </queue></queues></queue></show>`;
-
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseQueuePages([reply], "default");
-
-    expect(result[0]?.owner).toBe("app-svc-orders");
-  });
-
-  it("leaves owner undefined when the broker reply has no owner element", () => {
-    const xml = `<show><queue><queues><queue>
-      <name>orders-q</name>
-    </queue></queues></queue></show>`;
-
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseQueuePages([reply], "default");
-
-    expect(result[0]?.owner).toBeUndefined();
-  });
-
-  it("also finds the owner when it's nested under <info> instead of top-level", () => {
-    // Many SEMP v1 "show queue" detail fields come back nested under
-    // <info> rather than as direct children of <queue> - unverified which
-    // shape a given broker actually uses for <owner>, so we accept both.
-    const xml = `<show><queue><queues><queue>
-      <name>orders-q</name>
-      <info>
-        <durable>true</durable>
-        <owner>app-svc-orders</owner>
-      </info>
-    </queue></queues></queue></show>`;
-
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseQueuePages([reply], "default");
-
-    expect(result[0]?.owner).toBe("app-svc-orders");
+    expect(calls.map((c) => c.path)).toContain("/queues/a%20queue%2Fweird/subscriptions");
   });
 });
 
-describe("parseTopicEndpointPages", () => {
-  it("extracts topic-endpoint name and subscribed topics", () => {
-    const xml = `<show><topic-endpoint><topic-endpoints><topic-endpoint>
-      <name>te-orders</name>
-      <subscriptions>
-        <subscription><topic>orders/*</topic></subscription>
-      </subscriptions>
-    </topic-endpoint></topic-endpoints></topic-endpoint></show>`;
+describe("fetchTopicEndpoints", () => {
+  it("fetches the topic-endpoint list and each one's own subscription", async () => {
+    const { client } = fakeClient({
+      "/topicEndpoints": [{ topicEndpointName: "te-orders", owner: "app-svc-orders" }],
+      "/topicEndpoints/te-orders/subscriptions": [{ subscriptionTopic: "orders/*" }],
+    });
 
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseTopicEndpointPages([reply], "default");
+    const result = await fetchTopicEndpoints(client, "default");
 
     expect(result).toEqual([
       {
@@ -157,25 +88,21 @@ describe("parseTopicEndpointPages", () => {
         name: "te-orders",
         vpn: "default",
         subscriptions: ["orders/*"],
+        owner: "app-svc-orders",
       },
     ]);
   });
 });
 
-describe("parseClientPages", () => {
-  it("extracts client name and direct topic subscriptions from the confirmed *-virtual-router shape", () => {
-    // Confirmed against Solace's own docs example for a plain "show client"
-    // reply (https://docs.solace.com/Admin/SEMP/Using-Legacy-SEMP.htm) -
-    // clients nest under <primary-virtual-router>, not a <clients> wrapper.
-    const xml = `<show><client><primary-virtual-router><client>
-      <name>my-app-1</name>
-      <subscriptions>
-        <subscription><topic>orders/created</topic></subscription>
-      </subscriptions>
-    </client></primary-virtual-router></client></show>`;
+describe("fetchDirectSubscribers", () => {
+  it("only returns clients with at least one direct topic subscription", async () => {
+    const { client } = fakeClient({
+      "/clients": [{ clientName: "my-app-1" }, { clientName: "queue-consumer-only" }],
+      "/clients/my-app-1/subscriptions": [{ subscriptionTopic: "orders/created" }],
+      "/clients/queue-consumer-only/subscriptions": [],
+    });
 
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseClientPages([reply], "default");
+    const result = await fetchDirectSubscribers(client, "default");
 
     expect(result).toEqual([
       {
@@ -186,108 +113,28 @@ describe("parseClientPages", () => {
       },
     ]);
   });
-
-  it("also finds clients under an unverified flat <clients> wrapper (defensive - exact nesting isn't confirmed once <subscriptions/> is requested)", () => {
-    const xml = `<show><client><clients><client>
-      <name>my-app-1</name>
-      <subscriptions>
-        <subscription><topic>orders/created</topic></subscription>
-      </subscriptions>
-    </client></clients></client></show>`;
-
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseClientPages([reply], "default");
-
-    expect(result.map((e) => e.name)).toEqual(["my-app-1"]);
-  });
-
-  it("accepts <topic-subscription> as an alternate per-subscription element name", () => {
-    const xml = `<show><client><primary-virtual-router><client>
-      <name>my-app-1</name>
-      <subscriptions>
-        <subscription><topic-subscription>orders/created</topic-subscription></subscription>
-      </subscriptions>
-    </client></primary-virtual-router></client></show>`;
-
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseClientPages([reply], "default");
-
-    expect(result[0]?.subscriptions).toEqual(["orders/created"]);
-  });
-
-  it("skips clients with no direct topic subscriptions", () => {
-    const xml = `<show><client><primary-virtual-router><client>
-      <name>queue-consumer-only</name>
-    </client></primary-virtual-router></client></show>`;
-
-    const reply = parseReplyBody(xml) as unknown as Record<string, unknown>;
-    const result = parseClientPages([reply], "default");
-
-    expect(result).toEqual([]);
-  });
-
-  it("merges multiple pages (paging) into one flat list", () => {
-    const page1 = parseReplyBody(
-      `<show><client><primary-virtual-router><client><name>c1</name><subscriptions><subscription><topic>a</topic></subscription></subscriptions></client></primary-virtual-router></client></show>`,
-    ) as unknown as Record<string, unknown>;
-    const page2 = parseReplyBody(
-      `<show><client><primary-virtual-router><client><name>c2</name><subscriptions><subscription><topic>b</topic></subscription></subscriptions></client></primary-virtual-router></client></show>`,
-    ) as unknown as Record<string, unknown>;
-
-    const result = parseClientPages([page1, page2], "default");
-
-    expect(result.map((e) => e.name)).toEqual(["c1", "c2"]);
-  });
 });
 
-describe("fetchAllEndpoints request building", () => {
-  it("escapes XML special characters in the vpn name to prevent XML injection", async () => {
-    const { client, capturedBuilders } = fakeClientCapturingRequests();
+describe("fetchAllEndpoints", () => {
+  it("combines queues, topic-endpoints and direct subscribers into one flat list", async () => {
+    const { client, calls } = fakeClient({
+      "/queues": [{ queueName: "orders-q" }],
+      "/queues/orders-q/subscriptions": [{ subscriptionTopic: "orders/created" }],
+      "/topicEndpoints": [{ topicEndpointName: "te-orders" }],
+      "/topicEndpoints/te-orders/subscriptions": [{ subscriptionTopic: "orders/*" }],
+      "/clients": [{ clientName: "my-app-1" }],
+      "/clients/my-app-1/subscriptions": [{ subscriptionTopic: "orders/>" }],
+    });
 
-    await fetchAllEndpoints(client, `evil"vpn'<inject>&</inject>`);
+    const result = await fetchAllEndpoints(client, "default");
 
-    // Three sendPagedRpc calls: queues, topic-endpoints, direct subscribers.
-    expect(capturedBuilders).toHaveLength(3);
-    for (const builder of capturedBuilders) {
-      const xml = builder(null);
-      expect(xml).not.toContain("<inject>");
-      expect(xml).toContain("&lt;inject&gt;");
-      expect(xml).toContain("&amp;");
-      expect(xml).toContain("&quot;");
-      expect(xml).toContain("&apos;");
-    }
-  });
-
-  it("includes the vpn name and <subscriptions/> flag in the queue, topic-endpoint and client request", async () => {
-    const { client, capturedBuilders } = fakeClientCapturingRequests();
-
-    await fetchAllEndpoints(client, "my-vpn");
-
-    const [queueXml, topicEndpointXml, clientXml] = capturedBuilders.map((b) => b(null));
-    expect(queueXml).toContain("<show><queue>");
-    expect(queueXml).toContain("<vpn-name>my-vpn</vpn-name>");
-    expect(queueXml).toContain("<subscriptions/>");
-
-    expect(topicEndpointXml).toContain("<show><topic-endpoint>");
-    expect(topicEndpointXml).toContain("<vpn-name>my-vpn</vpn-name>");
-    expect(topicEndpointXml).toContain("<subscriptions/>");
-
-    expect(clientXml).toContain("<show><client>");
-    expect(clientXml).toContain("<vpn-name>my-vpn</vpn-name>");
-    expect(clientXml).toContain("<subscriptions/>");
-  });
-
-  it("embeds a more-cookie into the request when paging", async () => {
-    const { client, capturedBuilders } = fakeClientCapturingRequests();
-
-    await fetchAllEndpoints(client, "default");
-
-    const [queueBuilder] = capturedBuilders;
-    const withCookie = queueBuilder!("<more-cookie>abc</more-cookie>");
-    expect(withCookie).toContain("<more-cookie>abc</more-cookie>");
-
-    const withoutCookie = queueBuilder!(null);
-    expect(withoutCookie).not.toContain("more-cookie");
+    expect(result.map((e) => e.type)).toEqual(
+      expect.arrayContaining(["queue", "topic-endpoint", "direct-subscriber"]),
+    );
+    expect(result).toHaveLength(3);
+    expect(calls.map((c) => c.path)).toEqual(
+      expect.arrayContaining(["/queues", "/topicEndpoints", "/clients"]),
+    );
   });
 });
 
@@ -296,29 +143,18 @@ describe("fetchEndpointsAcrossConnections", () => {
     queueName: string,
     overrides: Partial<FetchableBrokerConnection> = {},
   ): FetchableBrokerConnection {
-    const queuePage = {
-      rpc: { show: { queue: [{ queues: { queue: [{ name: queueName }] } }] } },
-    };
-    const emptyTopicEndpointPage = {
-      rpc: { show: { "topic-endpoint": [{ "topic-endpoints": {} }] } },
-    };
-    const emptyClientPage = {
-      rpc: { show: { client: [{ "primary-virtual-router": {} }] } },
-    };
-
-    const client = {
-      sendPagedRpc: vi
-        .fn()
-        .mockResolvedValueOnce([queuePage])
-        .mockResolvedValueOnce([emptyTopicEndpointPage])
-        .mockResolvedValueOnce([emptyClientPage]),
-    } as unknown as SempV1Client;
+    const { client } = fakeClient({
+      "/queues": [{ queueName }],
+      [`/queues/${queueName}/subscriptions`]: [],
+      "/topicEndpoints": [],
+      "/clients": [],
+    });
 
     return {
       client,
       vpn: "default",
       label: "Test-Broker",
-      baseUrl: "http://localhost:8080/SEMP",
+      baseUrl: "http://localhost:8080",
       ...overrides,
     };
   }
@@ -334,6 +170,7 @@ describe("fetchEndpointsAcrossConnections", () => {
         name: "orders-q",
         vpn: "default",
         subscriptions: [],
+        owner: undefined,
         brokerLabel: "Test-Broker",
         brokerHost: "localhost:8080",
       },
@@ -342,8 +179,8 @@ describe("fetchEndpointsAcrossConnections", () => {
 
   it("queries multiple connections in parallel and flattens the combined, distinctly-stamped result", async () => {
     const connections = [
-      fakeConnectionReturning("orders-q", { label: "A", baseUrl: "http://host-a:8080/SEMP" }),
-      fakeConnectionReturning("orders-q", { label: "B", baseUrl: "http://host-b:8080/SEMP" }),
+      fakeConnectionReturning("orders-q", { label: "A", baseUrl: "http://host-a:8080" }),
+      fakeConnectionReturning("orders-q", { label: "B", baseUrl: "http://host-b:8080" }),
     ];
 
     const endpoints = await fetchEndpointsAcrossConnections(connections);

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { SempV1Client } from "./client.js";
+import { SempV2Client } from "./client.js";
 import { config } from "../config.js";
 
 export interface BrokerConnectionInput {
-  baseUrl: string; // e.g. http://broker-host:8080/SEMP
+  baseUrl: string; // e.g. http://broker-host:8080 - the broker's SEMP management root
   vpn: string;
   username: string;
   password: string;
@@ -20,7 +20,7 @@ export interface BrokerConnectionStatus {
 }
 
 interface StoredConnection extends BrokerConnectionStatus {
-  client: SempV1Client;
+  client: SempV2Client;
 }
 
 /**
@@ -50,7 +50,7 @@ export function addBrokerConnection(
     vpn: input.vpn,
     baseUrl: input.baseUrl,
     connectedAt: Date.now(),
-    client: new SempV1Client({
+    client: new SempV2Client({
       baseUrl: input.baseUrl,
       username: input.username,
       password: input.password,
@@ -84,7 +84,7 @@ export function getBrokerConnectionsStatus(sessionId: string): BrokerConnectionS
 
 /**
  * Extracts a display-friendly host (with port, if non-default) from a
- * connection's baseUrl, e.g. "http://localhost:8080/SEMP" -> "localhost:8080".
+ * connection's baseUrl, e.g. "http://localhost:8080" -> "localhost:8080".
  * Used for the "vpn at host" sub-label shown per endpoint when multiple
  * message VPNs are connected. Falls back to the raw baseUrl on parse
  * failure - shouldn't happen since it was already validated as a URL at

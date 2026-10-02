@@ -1,7 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireAuth } from "../auth/middleware.js";
-import { SempV1Client, SempError } from "../semp/client.js";
+import { SempV2Client, SempError } from "../semp/client.js";
 import {
   addBrokerConnection,
   clearBrokerConnections,
@@ -70,7 +70,7 @@ connectionRouter.post("/connection", connectRateLimit, async (req, res) => {
     return;
   }
 
-  const client = new SempV1Client({
+  const client = new SempV2Client({
     baseUrl,
     username,
     password,

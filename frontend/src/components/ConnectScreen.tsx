@@ -26,7 +26,7 @@ export function ConnectScreen({
   onBrokerConfigsChanged,
   onDone,
 }: ConnectScreenProps) {
-  const [baseUrl, setBaseUrl] = useState("http://localhost:8080/SEMP");
+  const [baseUrl, setBaseUrl] = useState("http://localhost:8080");
   const [vpn, setVpn] = useState("default");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -180,19 +180,19 @@ export function ConnectScreen({
         <form onSubmit={handleSubmit} className="connect-form">
           {!hasBrokers && (
             <p className="hint">
-              SEMP v1 management endpoint, e.g. http://broker-host:8080/SEMP.
-              A read-only user is enough - see permissions below. Connecting
-              to several message VPNs (maybe across multiple brokers)? Add
-              each one here - they'll all show up combined in the diagram,
-              color-coded by message VPN.
+              The broker's SEMP management host, e.g. http://broker-host:8080
+              (SEMP v2 - no path needed). A read-only user is enough.
+              Connecting to several message VPNs (maybe across multiple
+              brokers)? Add each one here - they'll all show up combined in
+              the diagram, color-coded by message VPN.
             </p>
           )}
           <label>
-            SEMP URL
+            SEMP host
             <input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="http://broker-host:8080/SEMP"
+              placeholder="http://broker-host:8080"
               required
             />
           </label>

@@ -6,5 +6,5 @@
 process.env.SESSION_SECRET ??= "test-secret-for-vitest-do-not-use-in-prod";
 // The SEMP throttle's timing behavior is unit-tested in isolation
 // (client.test.ts, with an explicit 0ms override) - the real 200ms default
-// would just slow down every route test that touches a SempV1Client.
+// would just slow down every route test that touches a SempV2Client.
 process.env.SEMP_MIN_REQUEST_INTERVAL_MS ??= "0";

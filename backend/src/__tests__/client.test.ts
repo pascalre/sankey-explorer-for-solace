@@ -1,21 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SempError, SempV1Client, extractRawMoreCookie } from "../semp/client.js";
+import { SempError, SempV2Client } from "../semp/client.js";
 
-function xmlResponse(body: string, ok = true, status = 200): Response {
+function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
     ok,
     status,
     statusText: ok ? "OK" : "Error",
-    text: () => Promise.resolve(body),
+    json: () => Promise.resolve(body),
   } as unknown as Response;
 }
 
-function okReply(innerRpc: string): string {
-  return `<rpc-reply semp-version="soltr/10_8_1"><rpc>${innerRpc}</rpc><execute-result code="ok"/></rpc-reply>`;
-}
-
-const client = new SempV1Client({
-  baseUrl: "http://localhost:8080/SEMP",
+const client = new SempV2Client({
+  baseUrl: "http://localhost:8080",
   username: "ro",
   password: "x",
   minRequestIntervalMs: 0, // no throttling delay slowing down the test suite
@@ -29,28 +25,40 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("SempV1Client.ping", () => {
-  it("resolves without error on a healthy 'ok' reply", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      xmlResponse(okReply("<show><version><version>10.8.1</version></version></show>")),
-    );
+describe("SempV2Client.ping", () => {
+  it("resolves without error on a healthy reply", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ data: { version: "10.8.1" } }));
 
     await expect(client.ping()).resolves.toBeUndefined();
   });
 
-  it("sends Basic Auth and the SEMP v1 XML body", async () => {
-    const fetchMock = vi.mocked(fetch).mockResolvedValue(
-      xmlResponse(okReply("<show><version/></show>")),
-    );
+  it("sends Basic Auth and GETs the SEMP v2 monitor root", async () => {
+    const fetchMock = vi
+      .mocked(fetch)
+      .mockResolvedValue(jsonResponse({ data: { version: "10.8.1" } }));
 
     await client.ping();
 
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("http://localhost:8080/SEMP");
-    expect(init?.method).toBe("POST");
+    expect(url).toBe("http://localhost:8080/SEMP/v2/monitor");
     const headers = init?.headers as Record<string, string>;
     expect(headers.Authorization).toBe(`Basic ${Buffer.from("ro:x").toString("base64")}`);
-    expect(init?.body).toContain("<show><version/></show>");
+  });
+
+  it("strips a trailing slash from baseUrl before building the URL", async () => {
+    const trailingSlashClient = new SempV2Client({
+      baseUrl: "http://localhost:8080/",
+      username: "ro",
+      password: "x",
+      minRequestIntervalMs: 0,
+    });
+    const fetchMock = vi
+      .mocked(fetch)
+      .mockResolvedValue(jsonResponse({ data: { version: "10.8.1" } }));
+
+    await trailingSlashClient.ping();
+
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://localhost:8080/SEMP/v2/monitor");
   });
 
   it("throws SempError on a network failure", async () => {
@@ -60,86 +68,63 @@ describe("SempV1Client.ping", () => {
   });
 
   it("throws SempError on a non-ok HTTP status", async () => {
-    vi.mocked(fetch).mockResolvedValue(xmlResponse("", false, 401));
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({}, false, 401));
 
     await expect(client.ping()).rejects.toThrow(/HTTP 401/);
   });
 
-  it("throws SempError when the reply has no <rpc-reply>", async () => {
-    vi.mocked(fetch).mockResolvedValue(xmlResponse("<not-a-semp-reply/>"));
+  it("throws SempError when the reply isn't valid JSON", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: () => Promise.reject(new Error("Unexpected token")),
+    } as unknown as Response);
 
-    await expect(client.ping()).rejects.toThrow(/Malformed SEMP reply/);
-  });
-
-  it("throws SempError when execute-result code is not 'ok'", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      xmlResponse(
-        `<rpc-reply><rpc><show/></rpc><execute-result code="fail" reason="bad vpn"/></rpc-reply>`,
-      ),
-    );
-
-    await expect(client.ping()).rejects.toThrow(/non-ok result/);
+    await expect(client.ping()).rejects.toThrow(/not valid JSON/);
   });
 });
 
-describe("SempV1Client.sendPagedRpc", () => {
-  it("returns a single page when there is no more-cookie", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      xmlResponse(okReply("<show><queue><queues><queue><name>q1</name></queue></queues></queue></show>")),
+describe("SempV2Client.getVpnCollection", () => {
+  it("builds the expected URL, with the vpn and path segments encoded", async () => {
+    const fetchMock = vi.mocked(fetch).mockResolvedValue(jsonResponse({ data: [] }));
+
+    await client.getVpnCollection("my vpn", "/queues");
+
+    expect(fetchMock.mock.calls[0]![0]).toBe(
+      "http://localhost:8080/SEMP/v2/monitor/msgVpns/my%20vpn/queues?count=100",
     );
-
-    const pages = await client.sendPagedRpc(() => "<show><queue/></show>");
-
-    expect(pages).toHaveLength(1);
-    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("follows more-cookie across pages until it disappears", async () => {
+  it("returns the combined data from a single page", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ data: [{ queueName: "q1" }] }));
+
+    const result = await client.getVpnCollection("default", "/queues");
+
+    expect(result).toEqual([{ queueName: "q1" }]);
+  });
+
+  it("follows meta.paging.nextPageUri across pages until it's no longer present", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(
-        xmlResponse(
-          okReply(
-            "<show><queue><queues><queue><name>q1</name></queue></queues><more-cookie>abc</more-cookie></queue></show>",
-          ),
-        ),
+        jsonResponse({
+          data: [{ queueName: "q1" }],
+          meta: { paging: { nextPageUri: "http://localhost:8080/SEMP/v2/monitor/page2" } },
+        }),
       )
-      .mockResolvedValueOnce(
-        xmlResponse(okReply("<show><queue><queues><queue><name>q2</name></queue></queues></queue></show>")),
-      );
+      .mockResolvedValueOnce(jsonResponse({ data: [{ queueName: "q2" }] }));
 
-    const pages = await client.sendPagedRpc((cookie) => `<show><queue>${cookie ?? ""}</queue></show>`);
+    const result = await client.getVpnCollection("default", "/queues");
 
-    expect(pages).toHaveLength(2);
+    expect(result).toEqual([{ queueName: "q1" }, { queueName: "q2" }]);
     expect(fetch).toHaveBeenCalledTimes(2);
-    // Second request must carry the more-cookie the first reply returned.
-    const secondBody = fetchMock.mock.calls[1]![1]?.body as string;
-    expect(secondBody).toContain("<more-cookie>abc</more-cookie>");
+    expect(fetchMock.mock.calls[1]![0]).toBe("http://localhost:8080/SEMP/v2/monitor/page2");
   });
 
-  it("stops at maxPages even if more-cookie keeps coming back", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      xmlResponse(
-        okReply(
-          "<show><queue><queues><queue><name>q</name></queue></queues><more-cookie>again</more-cookie></queue></show>",
-        ),
-      ),
-    );
+  it("propagates SempError when a page request fails", async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({}, false, 403));
 
-    const pages = await client.sendPagedRpc(() => "<show><queue/></show>", 3);
-
-    expect(pages).toHaveLength(3);
-    expect(fetch).toHaveBeenCalledTimes(3);
-  });
-});
-
-describe("extractRawMoreCookie", () => {
-  it("extracts the more-cookie element verbatim", () => {
-    const xml = "<rpc-reply><more-cookie>opaque-token</more-cookie></rpc-reply>";
-    expect(extractRawMoreCookie(xml)).toBe("<more-cookie>opaque-token</more-cookie>");
-  });
-
-  it("returns null when there is no more-cookie", () => {
-    expect(extractRawMoreCookie("<rpc-reply></rpc-reply>")).toBeNull();
+    await expect(client.getVpnCollection("default", "/queues")).rejects.toBeInstanceOf(SempError);
   });
 });

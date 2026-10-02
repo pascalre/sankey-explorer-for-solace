@@ -6,7 +6,7 @@ export interface EndpointInfo {
    * The queue/topic-endpoint name, or - for type "direct-subscriber" - the
    * connected client's name. A "direct subscriber" is a client consuming
    * directly off its own topic subscriptions, with no durable queue or
-   * topic-endpoint in between (SEMP v1 "show client ... subscriptions").
+   * topic-endpoint in between (SEMP v2 `.../clients/{name}/subscriptions`).
    */
   name: string;
   vpn: string;

@@ -2,7 +2,7 @@
 
 Visualizes which topic subscriptions map to which queues, topic endpoints,
 and direct subscribers of a Solace broker - as a Sankey diagram. Data comes
-live via SEMP v1 (Legacy SEMP, XML/RPC).
+live via SEMP v2 (RESTful JSON).
 
 ## Architecture
 
@@ -11,7 +11,7 @@ Browser (React + d3-sankey)
       │  fetch, same-origin, session cookie
       ▼
 Express backend (Node/TS)
-      │  SEMP v1 (Basic Auth, XML/RPC)
+      │  SEMP v2 (Basic Auth, REST/JSON)
       ▼
 Solace broker (management port, usually :8080)
 ```
@@ -31,7 +31,7 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 
 - **Export/import connection config as YAML.** On the Connect screen,
   "Export config" downloads the credentials of every broker currently added
-  in this browser tab (SEMP URL, VPN, username, password, label) as one
+  in this browser tab (SEMP host, VPN, username, password, label) as one
   `.yaml` file, and "Import config" reads one back and connects to every
   broker it lists. Handy for re-using a connection or distributing a
   multi-broker mesh setup without retyping it each time. The file contains
@@ -41,7 +41,7 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
   themselves once it's on disk. Format:
   ```yaml
   brokers:
-    - baseUrl: http://broker-host:8080/SEMP
+    - baseUrl: http://broker-host:8080
       vpn: default
       username: ro-user
       password: secret
@@ -53,8 +53,9 @@ or on a Solace broker host) - not a central multi-tenant SaaS. Because of that:
 - **Three endpoint types.** Besides queues and topic-endpoints, the diagram
   also shows **direct subscribers** - clients consuming straight off their
   own topic subscriptions, with no durable queue or topic-endpoint in
-  between (SEMP v1 "show client ... subscriptions"). Each type gets its own
-  color (queue: green, topic-endpoint: orange, direct subscriber: yellow).
+  between (SEMP v2 `GET .../clients/{clientName}/subscriptions`). Each type
+  gets its own color (queue: green, topic-endpoint: orange, direct
+  subscriber: yellow).
 - **Multiple broker connections at once.** Add several brokers on the
   Connect screen (e.g. a mesh of brokers) - all of them get queried and
   combined into one diagram. Each broker gets its own color; endpoints
@@ -113,9 +114,11 @@ npm install
 npm run dev          # http://localhost:5173, proxies /api -> :4000
 ```
 
-Open the frontend in dev mode, enter broker URL/VPN/credentials in the
-"Connect" screen. No broker handy? Rebuild the mock from the smoke test
-(see `backend/src/__tests__` for the assumed reply structure).
+Open the frontend in dev mode, enter the broker's SEMP host/VPN/credentials
+in the "Connect" screen (just the host, e.g. `http://localhost:8080` - no
+`/SEMP` path needed, the backend adds `/SEMP/v2/monitor/...` itself). No
+broker handy? Rebuild the mock from the smoke test (see
+`backend/src/__tests__` for the assumed reply structure).
 
 ## Deployment (container)
 
@@ -145,7 +148,7 @@ is running:
 A failed connect logs a line like:
 
 ```
-[2026-08-17T10:00:00.000Z] Connection attempt failed for http://customer-broker:8080/SEMP (vpn=default, username=ro-user) SempError: SEMP request failed: HTTP 401 Unauthorized
+[2026-08-17T10:00:00.000Z] Connection attempt failed for http://customer-broker:8080 (vpn=default, username=ro-user) SempError: SEMP request failed: HTTP 401 Unauthorized
 ```
 
 The message after `SempError:` is the actual cause - wrong credentials (401),
@@ -180,10 +183,19 @@ too, not just `src/` - the plain `tsc`/`npm run build` command only checks
 
 ## Known open items
 
-- **SEMP v1 reply structure unverified against a real broker.** The
-  assumptions live in `backend/src/semp/queries.ts` (comment at the top of
-  the file) - if they don't match, touch only that file; the rest of the
-  app only knows the normalized `EndpointInfo[]`.
+- **Topic-endpoint subscriptions unverified against a real broker.** Queue
+  and direct-subscriber (client) subscriptions are confirmed against
+  Solace's own SEMP v2 docs/examples; topic-endpoints are assumed to expose
+  their subscription the same way (a `.../topicEndpoints/{name}/subscriptions`
+  sub-resource). The assumption lives in `backend/src/semp/queries.ts`
+  (comment at the top of the file) - if it doesn't match, touch only that
+  file; the rest of the app only knows the normalized `EndpointInfo[]`.
+- **SEMP v2's REST model means one extra HTTP request per queue/topic-endpoint/
+  client** (to fetch each object's own `.../subscriptions`), since - unlike
+  SEMP v1 - there's no way to embed a sub-collection into a parent list
+  reply. Fine at workshop/demo scale; a VPN with thousands of queues or
+  connected clients would want a concurrency limit added in
+  `backend/src/semp/queries.ts`.
 - `express-session` runs with `MemoryStore` - fine for 1 process/customer.
   For multiple instances behind a load balancer: switch to an external
   store (Redis), see the TODO in `backend/src/semp/connectionStore.ts`.

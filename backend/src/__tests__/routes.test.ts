@@ -2,50 +2,39 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { createServer } from "../server.js";
 
-function xmlResponse(body: string, ok = true, status = 200): Response {
+function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
     ok,
     status,
     statusText: ok ? "OK" : "Error",
-    text: () => Promise.resolve(body),
+    json: () => Promise.resolve(body),
   } as unknown as Response;
 }
 
-const OK_VERSION_REPLY = `<rpc-reply><rpc><show><version><version>10.8.1</version></version></show></rpc><execute-result code="ok"/></rpc-reply>`;
-
-/** A fetch mock that behaves like a small real broker: version/queue/topic-endpoint/client. */
+/** A fetch mock that behaves like a small real broker: version/queues/topicEndpoints/clients. */
 function mockBrokerFetch() {
-  return vi.fn((_url: string, init?: RequestInit) => {
-    const body = String(init?.body ?? "");
-    if (body.includes("<version/>")) return Promise.resolve(xmlResponse(OK_VERSION_REPLY));
-    if (body.includes("<queue>")) {
+  return vi.fn((url: string) => {
+    if (url.endsWith("/SEMP/v2/monitor")) {
+      return Promise.resolve(jsonResponse({ data: { version: "10.8.1" } }));
+    }
+    if (url.includes("/queues/orders-q/subscriptions")) {
       return Promise.resolve(
-        xmlResponse(
-          `<rpc-reply><rpc><show><queue><queues><queue>
-            <name>orders-q</name>
-            <subscriptions><subscription><topic>orders/created</topic></subscription></subscriptions>
-          </queue></queues></queue></show></rpc><execute-result code="ok"/></rpc-reply>`,
-        ),
+        jsonResponse({ data: [{ subscriptionTopic: "orders/created" }] }),
       );
     }
-    if (body.includes("<topic-endpoint>")) {
-      return Promise.resolve(
-        xmlResponse(
-          `<rpc-reply><rpc><show><topic-endpoint><topic-endpoints></topic-endpoints></topic-endpoint></show></rpc><execute-result code="ok"/></rpc-reply>`,
-        ),
-      );
+    if (url.includes("/queues")) {
+      return Promise.resolve(jsonResponse({ data: [{ queueName: "orders-q" }] }));
     }
-    if (body.includes("<client>")) {
-      return Promise.resolve(
-        xmlResponse(
-          `<rpc-reply><rpc><show><client><primary-virtual-router><client>
-            <name>my-app-1</name>
-            <subscriptions><subscription><topic>orders/&gt;</topic></subscription></subscriptions>
-          </client></primary-virtual-router></client></show></rpc><execute-result code="ok"/></rpc-reply>`,
-        ),
-      );
+    if (url.includes("/topicEndpoints")) {
+      return Promise.resolve(jsonResponse({ data: [] }));
     }
-    return Promise.resolve(xmlResponse("", false, 400));
+    if (url.includes("/clients/my-app-1/subscriptions")) {
+      return Promise.resolve(jsonResponse({ data: [{ subscriptionTopic: "orders/>" }] }));
+    }
+    if (url.includes("/clients")) {
+      return Promise.resolve(jsonResponse({ data: [{ clientName: "my-app-1" }] }));
+    }
+    return Promise.resolve(jsonResponse({}, false, 400));
   });
 }
 
@@ -93,7 +82,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
 
   it("validates required fields on connect", async () => {
     const agent = request.agent(app);
-    const res = await agent.post("/api/connection").send({ baseUrl: "http://x/SEMP" });
+    const res = await agent.post("/api/connection").send({ baseUrl: "http://x" });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/required/);
   });
@@ -111,7 +100,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
     const agent = request.agent(app);
     const res = await agent
       .post("/api/connection")
-      .send({ baseUrl: "ftp://host/SEMP", vpn: "default", username: "ro", password: "x" });
+      .send({ baseUrl: "ftp://host", vpn: "default", username: "ro", password: "x" });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/http or https/);
   });
@@ -124,7 +113,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
     const agent = request.agent(app);
     const res = await agent
       .post("/api/connection")
-      .send({ baseUrl: "http://localhost:8080/SEMP", vpn: "default", username: "ro", password: "x" });
+      .send({ baseUrl: "http://localhost:8080", vpn: "default", username: "ro", password: "x" });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/Could not connect/);
   });
@@ -136,14 +125,14 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
     );
     const agent = request.agent(app);
     const res = await agent.post("/api/connection").send({
-      baseUrl: "http://customer-broker.example:8080/SEMP",
+      baseUrl: "http://customer-broker.example:8080",
       vpn: "default",
       username: "ro",
       password: "x",
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe(
-      "Could not connect: SEMP request failed (network): http://customer-broker.example:8080/SEMP",
+      "Could not connect: SEMP request failed (network): http://customer-broker.example:8080/SEMP/v2/monitor",
     );
   });
 
@@ -155,7 +144,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
     );
     const agent = request.agent(app);
     await agent.post("/api/connection").send({
-      baseUrl: "http://customer-broker.example:8080/SEMP",
+      baseUrl: "http://customer-broker.example:8080",
       vpn: "customer-vpn",
       username: "ro-user",
       password: "super-secret-password",
@@ -175,7 +164,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const agent = request.agent(app);
     await agent.post("/api/connection").send({
-      baseUrl: "http://localhost:8080/SEMP",
+      baseUrl: "http://localhost:8080",
       vpn: "default",
       username: "ro",
       password: "super-secret-password",
@@ -195,7 +184,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
     const agent = request.agent(app);
 
     const connectRes = await agent.post("/api/connection").send({
-      baseUrl: "http://localhost:8080/SEMP",
+      baseUrl: "http://localhost:8080",
       vpn: "default",
       username: "ro",
       password: "x",
@@ -253,7 +242,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
   it("502s when the SEMP query itself fails after a successful connect", async () => {
     const agent = request.agent(app);
     await agent.post("/api/connection").send({
-      baseUrl: "http://localhost:8080/SEMP",
+      baseUrl: "http://localhost:8080",
       vpn: "default",
       username: "ro",
       password: "x",
@@ -272,7 +261,7 @@ describe("connection + endpoints + sankey-edges (full flow on one session)", () 
   it("DELETE /api/connection clears all connections at once", async () => {
     const agent = request.agent(app);
     await agent.post("/api/connection").send({
-      baseUrl: "http://localhost:8080/SEMP",
+      baseUrl: "http://localhost:8080",
       vpn: "default",
       username: "ro",
       password: "x",
