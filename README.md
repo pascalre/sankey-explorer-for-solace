@@ -280,3 +280,16 @@ too, not just `src/` - the plain `tsc`/`npm run build` command only checks
 - No GitHub Actions Dependabot config, no SAST (semgrep) - deferred for the
   current Tier 1 scope, see the rigor ladder in the
   senior-engineering-partner skill for the promotion triggers.
+- **`addWildcardCoverageEdges.ts`, `subscriptionCovers.ts` and
+  `toSankeyEdges.ts` exist twice** - once in `backend/src/semp/`, once in
+  `frontend/src/lib/` - nearly line-for-line identical (each file's own doc
+  comment says so). Deliberate, not an oversight: one copy feeds the SPA's
+  own diagram, the other feeds the backend's `/api/sankey-edges` Grafana
+  path (see "Grafana path" below), and the two are built/deployed as
+  completely separate artifacts (see `Dockerfile`'s two build stages, which
+  don't share a filesystem). Actually merging them into one shared module
+  would need a workspace/shared-package restructuring that touches both
+  Dockerfile stages (COPY layers, `rootDir`/tsconfig, emitted output paths)
+  - worth doing deliberately and verified against a real `docker build`,
+  not as a drive-by fix. Excluded from SonarCloud's duplication check for
+  this reason - see `.sonarcloud.properties`.
