@@ -245,18 +245,15 @@ too, not just `src/` - the plain `tsc`/`npm run build` command only checks
 
 ## Known open items
 
-- **Topic-endpoint subscriptions unverified against a real broker.** Queue
-  and direct-subscriber (client) subscriptions are confirmed against
-  Solace's own SEMP v2 docs/examples; topic-endpoints are assumed to expose
-  their subscription the same way (a `.../topicEndpoints/{name}/subscriptions`
-  sub-resource). The assumption lives in `backend/src/semp/queries.ts`
-  (comment at the top of the file) - if it doesn't match, touch only that
-  file; the rest of the app only knows the normalized `EndpointInfo[]`.
-- **SEMP v2's REST model means one extra HTTP request per queue/topic-endpoint/
-  client** (to fetch each object's own `.../subscriptions`), since - unlike
-  SEMP v1 - there's no way to embed a sub-collection into a parent list
-  reply. Fine at workshop/demo scale; a VPN with thousands of queues or
-  connected clients would want a concurrency limit added in
+- **SEMP v2's REST model means one extra HTTP request per queue/client**
+  (to fetch each object's own `.../subscriptions`), since - unlike SEMP
+  v1 - there's no way to embed a sub-collection into a parent list reply.
+  (Topic-endpoints don't have this cost: their bound topic comes back
+  directly as the `destinationTopic` field on the `GET .../topicEndpoints`
+  list reply itself - confirmed via a real broker's own live OpenAPI spec,
+  `GET {baseUrl}/SEMP/v2/monitor/spec` - so no second request is needed for
+  them at all.) Fine at workshop/demo scale; a VPN with thousands of queues
+  or connected clients would want a concurrency limit added in
   `backend/src/semp/queries.ts`.
 - `express-session` runs with `MemoryStore` - fine for 1 process/customer.
   For multiple instances behind a load balancer: switch to an external

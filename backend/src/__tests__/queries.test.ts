@@ -74,10 +74,11 @@ describe("fetchQueues", () => {
 });
 
 describe("fetchTopicEndpoints", () => {
-  it("fetches the topic-endpoint list and each one's own subscription", async () => {
-    const { client } = fakeClient({
-      "/topicEndpoints": [{ topicEndpointName: "te-orders", owner: "app-svc-orders" }],
-      "/topicEndpoints/te-orders/subscriptions": [{ subscriptionTopic: "orders/*" }],
+  it("fetches the topic-endpoint list and uses each one's destinationTopic field directly - confirmed via a real broker's own /SEMP/v2/monitor/spec that topic-endpoints have NO '.../subscriptions' sub-resource (unlike queues/clients); the bound topic is a plain attribute on the topicEndpoint object itself, already included in the list reply", async () => {
+    const { client, calls } = fakeClient({
+      "/topicEndpoints": [
+        { topicEndpointName: "te-orders", owner: "app-svc-orders", destinationTopic: "orders/*" },
+      ],
     });
 
     const result = await fetchTopicEndpoints(client, "default");
@@ -90,6 +91,21 @@ describe("fetchTopicEndpoints", () => {
         subscriptions: ["orders/*"],
         owner: "app-svc-orders",
       },
+    ]);
+    // No extra per-object request, unlike fetchQueues()/fetchDirectSubscribers() -
+    // there's no ".../subscriptions" sub-resource for topic-endpoints to fetch.
+    expect(calls.map((c) => c.path)).toEqual(["/topicEndpoints"]);
+  });
+
+  it("returns an empty subscriptions list for a topic-endpoint with no bound topic yet (provisioned, but no client has bound to it)", async () => {
+    const { client } = fakeClient({
+      "/topicEndpoints": [{ topicEndpointName: "te-unbound" }],
+    });
+
+    const result = await fetchTopicEndpoints(client, "default");
+
+    expect(result).toEqual([
+      { type: "topic-endpoint", name: "te-unbound", vpn: "default", subscriptions: [], owner: undefined },
     ]);
   });
 });
@@ -120,8 +136,7 @@ describe("fetchAllEndpoints", () => {
     const { client, calls } = fakeClient({
       "/queues": [{ queueName: "orders-q" }],
       "/queues/orders-q/subscriptions": [{ subscriptionTopic: "orders/created" }],
-      "/topicEndpoints": [{ topicEndpointName: "te-orders" }],
-      "/topicEndpoints/te-orders/subscriptions": [{ subscriptionTopic: "orders/*" }],
+      "/topicEndpoints": [{ topicEndpointName: "te-orders", destinationTopic: "orders/*" }],
       "/clients": [{ clientName: "my-app-1" }],
       "/clients/my-app-1/subscriptions": [{ subscriptionTopic: "orders/>" }],
     });
